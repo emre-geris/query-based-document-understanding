@@ -1,0 +1,4 @@
+# Hafta 2 OCR deneyi için gerekenler (sürümler çalışan ortamdan alındı)
+datasets==5.0.1
+pillow==12.3.0
+pytesseract==0.3.13

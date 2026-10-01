@@ -1,0 +1,9 @@
+# Sanal ortam ve Python önbelleği
+.venv/
+venv/
+__pycache__/
+# Yeniden üretilebilen büyük çıktılar (csv/json sonuçları repoda kalır)
+ciktilar/**/*.png
+ciktilar/**/*.txt
+# Office geçici dosyaları
+~$*
