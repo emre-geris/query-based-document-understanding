@@ -45,7 +45,7 @@ src/qdu/
   pipelines/        Text, vision and hybrid answering pipelines
   models/           Provider-independent LLM/VLM interface (+ a fake model for tests)
   ocr/              OCR engines (Tesseract, cached per page)
-  data/             DocVQA loading, question records, manifests, stratified sampling
+  data/             Dataset registry (DocVQA, InfographicVQA, ChartQA), document-level splits, manifests, sampling
   evaluation/       ANLS and routing-oracle analysis
   benchmark.py      Sample -> run -> report
   runner.py         Resumable pipeline runs -> scored predictions (JSONL)
@@ -80,8 +80,9 @@ uv run pre-commit install     # run ruff and hygiene checks on every commit
 # Answer a question about a page image
 uv run qdu answer --image page.png --question "What is the total?" --pipeline hybrid --vision-model <spec>
 
-# Benchmark on DocVQA validation
-uv run qdu benchmark sample                                        # once: fixed 200-question sample
+# Datasets and benchmark
+uv run qdu data download                                           # once: DocVQA, InfographicVQA, ChartQA -> HF cache
+uv run qdu benchmark sample                                        # pilot: 100 questions per dataset
 uv run qdu benchmark run --text-model <spec> --vision-model <spec> # resumable
 uv run qdu benchmark report runs/<run-name>                        # ANLS per pipeline/type, oracle
 ```
@@ -93,8 +94,8 @@ spec; its answers are meaningless and only exercise the wiring.
 
 | | |
 |---|---|
-| Data | DocVQA validation (`lmms-lab/DocVQA`), downloaded to the Hugging Face cache on first use |
-| Sample | 200 questions, at most one per document, stratified by question type (rarest label), at least 10 per type, seed 42 |
+| Data | DocVQA and InfographicVQA validation, ChartQA test (labelled evaluation splits; see CLAUDE.md) |
+| Pilot sample | 100 questions per dataset from the router-train split, at most one per document, stratified by question type, seed 42 |
 | Metric | ANLS per question; mean per pipeline and per type |
 | Cost | input/output tokens and model latency per call; OCR time per page |
 | Routing oracle | best pipeline per question; ties go to the cheaper one (text < vision < hybrid). Its mean ANLS is the ceiling for any router, its choices are the router's training labels |

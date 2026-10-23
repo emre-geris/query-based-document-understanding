@@ -43,8 +43,21 @@ Never use `pip install` or edit `uv.lock` by hand.
 ## Environment notes
 
 - Primary development is on Windows. Tesseract is expected on `PATH` or at `C:\Program Files\Tesseract-OCR\tesseract.exe`.
-- DocVQA is downloaded from Hugging Face (`lmms-lab/DocVQA`) into the user's HF cache, outside the repo.
+- Datasets are downloaded by `qdu data download` into the user's Hugging Face cache (`~/.cache/huggingface`), never into the repo.
+- Keep the virtual environment outside OneDrive: set `UV_PROJECT_ENVIRONMENT` (e.g. `C:\Users\<you>\venvs\qdu`) before `uv sync`.
 - No local GPU. Qwen2.5-VL runs behind a vLLM OpenAI-compatible server (Colab / Kaggle / university GPU); the code reaches it over HTTP, so everything else runs on a laptop.
+
+## Datasets
+
+Each source uses its **labelled evaluation split**, not its training split: Qwen2.5-VL was trained on the official training sets, so their questions would overstate every path. Router splits are cut from these questions **by document** with a salted hash (`qdu.data.splits`, 60/20/20), so a document never appears in two splits. Ids are dataset-prefixed (`docvqa/49153`).
+
+| Name | Source (HF) | Split used | Size | Role | Licence |
+|---|---|---|---|---|---|
+| `docvqa` | `lmms-lab/DocVQA` / DocVQA | validation | 5,349 q, ~1.1 GB | router train/val/test | RRC DocVQA terms (research) |
+| `infographicvqa` | `lmms-lab/DocVQA` / InfographicVQA | validation | 2,801 q, ~0.3 GB | router train/val/test | RRC InfographicVQA terms (research) |
+| `chartqa` | `HuggingFaceM4/ChartQA` | test | 2,500 q, ~0.1 GB | router train/val/test | GPL-3.0 |
+| `tatdqa` | `next-tat/TAT-DQA` (PDF zip + gold JSON) | test | — | unseen-data test only | CC BY 4.0 |
+| DUDE | — | — | — | optional extra test | — |
 
 ## Roadmap
 
@@ -63,15 +76,17 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 ### Phase 1 — Pilot & go/no-go (H3–H4, decision **30 Oct**)
 - [ ] R · vLLM server for Qwen2.5-VL (3B first, 7B if memory allows) + setup notes in README
 - [ ] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, token usage, timeouts, retries)
-- [ ] H · Dataset registry beyond DocVQA: InfographicVQA, ChartQA loaders on the same `QARecord`
-- [ ] H · Pilot manifest: ~300 questions (100 per dataset, one per document) → `benchmarks/pilot_300.csv`
+- [x] H · Dataset registry (`qdu.data.sources`): DocVQA, InfographicVQA, ChartQA on the same `QARecord`; `qdu data download`
+- [ ] H · Download the pilot datasets on the development machine and record sizes / counts above
+- [ ] H · Pilot manifest: 300 questions (100 per dataset, one per document, router-train split) → `benchmarks/pilot_300.csv`
 - [ ] E · Cost = OCR time + model latency (+ tokens) per path, reported side by side with ANLS
 - [ ] Ortak · Run 3 paths on the pilot, `qdu benchmark report`, per-dataset breakdown
 - [ ] Ortak · Go/no-go: oracle headroom over best single path and over "always hybrid" at equal cost. No usable gap → pivot to a measurement study on the same data
 
 ### Phase 2 — Data & labels (H4–H7)
-- [ ] H · Document-level train / val / test splits for DocVQA, InfographicVQA, ChartQA subsets (no document in two splits)
-- [ ] H · TAT-DQA loader, test-only (never used for training or λ selection)
+- [x] H · Document-level train / val / test splits (hash-based, `qdu.data.splits`)
+- [ ] H · Download TAT-DQA test files (`tatdqa_docs_test.zip`, `tatdqa_dataset_test_gold.json`)
+- [ ] H · TAT-DQA loader: render the evidence page of each PDF to an image (test-only; never used for training or λ selection)
 - [ ] R · Batch labelling: every train/val question × 3 paths, resumable, cost logged
 - [ ] E · Label table: per question and path → ANLS, cost; oracle label at chosen tolerance
 
@@ -104,3 +119,5 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 ### Decisions
 - Same model (Qwen2.5-VL) serves all three paths; the text path sends no image. Keeps differences attributable to input modality.
 - Samples take at most one question per document; splits are by document.
+- Use each dataset's labelled evaluation split (DocVQA/InfographicVQA validation, ChartQA test) because the official training splits are in Qwen2.5-VL's training data.
+- The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.
