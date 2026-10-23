@@ -10,6 +10,9 @@ dependencies = [
     "pytesseract>=0.3.13",
 ]
 
+[project.scripts]
+qdu = "qdu.cli:main"
+
 [build-system]
 requires = ["uv_build>=0.9,<0.14"]
 build-backend = "uv_build"
