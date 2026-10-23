@@ -1,0 +1,25 @@
+[project]
+name = "query-based-document-understanding"
+version = "0.1.0"
+description = "Query-aware document understanding system that selects a text, vision or hybrid pipeline per query."
+authors = [{ name = "Hasan Emre Geriş", email = "7emregeris@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = [
+    "datasets>=5.0.1",
+    "pillow>=12.3.0",
+    "pytesseract>=0.3.13",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "qdu"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+    "pytest>=9.1.1",
+    "ruff>=0.17.2",
+]
