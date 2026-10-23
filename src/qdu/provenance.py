@@ -32,7 +32,7 @@ def run_metadata(**extra: Any) -> dict[str, Any]:
             versions[package] = metadata.version(package)
         except metadata.PackageNotFoundError:
             versions[package] = None
-    status = _git("status", "--porcelain")
+    status = _git("status", "--porcelain", "--untracked-files=no")
     return {
         "date": datetime.now().isoformat(timespec="seconds"),
         "git_commit": _git("rev-parse", "HEAD"),
