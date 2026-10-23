@@ -98,7 +98,9 @@ def build_sample(
         sources=per_source,
         manifest_sha256=file_sha256(manifest),
     )
-    info_path(manifest).write_text(json.dumps(info, ensure_ascii=False, indent=2), "utf-8")
+    info_path(manifest).write_text(
+        json.dumps(info, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
     return info
 
 

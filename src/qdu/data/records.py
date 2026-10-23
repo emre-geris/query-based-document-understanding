@@ -44,7 +44,7 @@ class QARecord:
 def write_manifest(records: Iterable[QARecord], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=MANIFEST_FIELDS)
+        writer = csv.DictWriter(f, fieldnames=MANIFEST_FIELDS, lineterminator="\n")
         writer.writeheader()
         for r in records:
             writer.writerow(
