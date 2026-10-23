@@ -63,6 +63,8 @@ Each source uses its **labelled evaluation split**, not its training split: Qwen
 
 Source of truth for what to build next. Design follows the MFK420 pre-presentation (Oct 2026); deviations are allowed when they improve the system, but record them under *Decisions*. Mark items `[x]` in the same commit that completes them. Owners: **E** Emre (router & ML), **H** Hayrunnisa (data & signals), **R** Ramazan (model infra & demo). Weeks refer to the 14-week plan (H1 = 5 Oct).
 
+**Ordering rule.** Phases group work by goal and deadline, not strict sequence. Work that only pays off if the pilot shows a usable gap (Phase 3–4: signals, router, full labelling) does not start before the go/no-go on 30 Oct. Small items needed in either outcome (data, splits, tooling) may be pulled forward; move such an item into the phase where it is actually needed.
+
 **Target system.** Per question: OCR + layout → signals S1–S4 (no LM call, < 50 ms) → router picks the path maximizing `predicted_quality − λ·cost` → Qwen2.5-VL answers via text / vision / hybrid (same model, one call) → answer, ANLS, latency, tokens logged.
 
 ### Phase 0 — Foundation (done)
@@ -77,6 +79,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [ ] R · vLLM server for Qwen2.5-VL (3B first, 7B if memory allows) + setup notes in README
 - [ ] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, token usage, timeouts, retries)
 - [x] H · Dataset registry (`qdu.data.sources`): DocVQA, InfographicVQA, ChartQA on the same `QARecord`; `qdu data download`
+- [x] H · Document-level train / val / test splits (hash-based, `qdu.data.splits`); prerequisite for drawing the pilot from the router-train split
 - [x] H · Download the pilot datasets (`qdu data download`): DocVQA 5,349 q / 1,286 docs, InfographicVQA 2,801 / 500, ChartQA 2,500 / 1,509
 - [x] H · Pilot manifest: 300 questions (100 per dataset, one per document, router-train split) → `benchmarks/pilot_300.csv`
 - [ ] E · Cost = OCR time + model latency (+ tokens) per path, reported side by side with ANLS
@@ -84,9 +87,8 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [ ] Ortak · Go/no-go: oracle headroom over best single path and over "always hybrid" at equal cost. No usable gap → pivot to a measurement study on the same data
 
 ### Phase 2 — Data & labels (H4–H7)
-- [x] H · Document-level train / val / test splits (hash-based, `qdu.data.splits`)
 - [x] H · Download TAT-DQA test files (`tatdqa_docs_test.zip`, `tatdqa_dataset_test_gold.json`) into the HF cache
-- [ ] H · TAT-DQA loader: render the evidence page of each PDF to an image (test-only; never used for training or λ selection)
+- [ ] H · TAT-DQA loader from the page PNGs in the docs zip; single-page documents first (test-only; never used for training or λ selection)
 - [ ] R · Batch labelling: every train/val question × 3 paths, resumable, cost logged
 - [ ] E · Label table: per question and path → ANLS, cost; oracle label at chosen tolerance
 
