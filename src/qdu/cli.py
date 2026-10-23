@@ -40,17 +40,43 @@ def cmd_answer(args: argparse.Namespace) -> int:
     return 0
 
 
+def _names(text: str) -> list[str]:
+    return [n.strip() for n in text.split(",") if n.strip()]
+
+
+def cmd_data_download(args: argparse.Namespace) -> int:
+    from qdu.data import get_source, iter_source_records, load_source
+
+    for name in _names(args.datasets):
+        spec = get_source(name)
+        print(f"{name}: {spec.hf_id} [{spec.hf_config or 'default'}] {spec.hf_split} ...")
+        records = list(iter_source_records(name, load_source(name)))
+        splits = {s: sum(r.split == s for r in records) for s in ("train", "val", "test")}
+        docs = len({r.doc_id for r in records})
+        print(f"  {len(records)} questions, {docs} documents, router splits {splits}")
+    return 0
+
+
 def cmd_sample(args: argparse.Namespace) -> int:
-    print(f"Loading DocVQA ({args.split}); the first run downloads it to the HF cache...")
+    names = _names(args.datasets)
+    split = None if args.split == "all" else args.split
+    print(f"Sampling {args.per_dataset} questions per dataset from {', '.join(names)}...")
     info = benchmark.build_sample(
-        args.out, n=args.n, min_per_stratum=args.min_per_stratum, seed=args.seed, split=args.split
+        args.out,
+        datasets=names,
+        per_dataset=args.per_dataset,
+        split=split,
+        min_per_stratum=args.min_per_stratum,
+        seed=args.seed,
     )
-    sample, population = info["sample_strata"], info["population_strata"]
-    print(f"\n{info['n']} questions, at most one per document")
-    print(f"  {'stratum':<18}{'population':>12}{'sample':>8}")
-    for stratum, total in population.items():
-        print(f"  {stratum:<18}{total:>12}{sample.get(stratum, 0):>8}")
-    print(f"\nWrote {args.out} and {benchmark.info_path(args.out)}")
+    for name, source in info["sources"].items():
+        print(
+            f"\n{name}: {source['population_questions']} questions / "
+            f"{source['population_documents']} documents in split {args.split}"
+        )
+        for stratum, n in source["sample_strata"].items():
+            print(f"  {stratum:<32}{n:>5}")
+    print(f"\n{info['questions']} questions -> {args.out} and {benchmark.info_path(args.out)}")
     return 0
 
 
@@ -62,7 +88,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     def on_row(row) -> None:
         status = f"ANLS {row.anls:.2f}" if row.error is None else f"ERROR {row.error}"
-        print(f"  {row.question_id:>8} {row.pipeline:<7} {status}")
+        print(f"  {row.question_id:<28} {row.pipeline:<7} {status}")
 
     stats = benchmark.run(
         run_dir,
@@ -72,7 +98,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         pipelines=names,
         manifest=args.manifest,
         limit=args.limit,
-        split=args.split,
         on_row=on_row,
     )
     print(f"\ncompleted {stats.completed}, skipped {stats.skipped}, failed {stats.failed}")
@@ -83,9 +108,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    summary = benchmark.report(args.run_dir, tolerance=args.tolerance)
-    print(benchmark.format_summary(summary))
-    print(f"\nWrote summary.json, by_stratum.csv, oracle_labels.csv to {args.run_dir}")
+    by_stratum, by_dataset = benchmark.report(args.run_dir, tolerance=args.tolerance)
+    print(benchmark.format_summary(by_dataset, "dataset"))
+    print()
+    print(benchmark.format_summary(by_stratum))
+    print(
+        f"\nWrote summary.json, by_dataset.csv, by_stratum.csv, oracle_labels.csv to {args.run_dir}"
+    )
     return 0
 
 
@@ -103,17 +132,25 @@ def build_parser() -> argparse.ArgumentParser:
     answer.add_argument("--json", action="store_true", help="print the full pipeline output")
     answer.set_defaults(func=cmd_answer)
 
-    bench = sub.add_parser("benchmark", help="evaluate the pipelines on DocVQA")
+    data = sub.add_parser("data", help="download and inspect datasets")
+    data_sub = data.add_subparsers(dest="data_command", required=True)
+    download = data_sub.add_parser("download", help="download datasets to the HF cache")
+    download.add_argument("--datasets", default=",".join(benchmark.PILOT_DATASETS))
+    download.set_defaults(func=cmd_data_download)
+
+    bench = sub.add_parser("benchmark", help="evaluate the pipelines")
     bench_sub = bench.add_subparsers(dest="benchmark_command", required=True)
 
-    sample = bench_sub.add_parser("sample", help="build the fixed question sample")
+    sample = bench_sub.add_parser("sample", help="build a fixed question sample (manifest)")
     sample.add_argument("--out", type=Path, default=benchmark.DEFAULT_MANIFEST)
-    sample.add_argument("--n", type=int, default=200)
-    sample.add_argument("--min-per-stratum", type=int, default=10)
+    sample.add_argument("--datasets", default=",".join(benchmark.PILOT_DATASETS))
+    sample.add_argument("--per-dataset", type=int, default=100)
+    sample.add_argument(
+        "--split", choices=("train", "val", "test", "all"), default="train", help="router split"
+    )
+    sample.add_argument("--min-per-stratum", type=int, default=5)
     sample.add_argument("--seed", type=int, default=42)
-    sample.add_argument("--split", default="validation")
     sample.set_defaults(func=cmd_sample)
-
     run = bench_sub.add_parser("run", help="run pipelines on the sample (resumable)")
     run.add_argument("--text-model", required=True)
     run.add_argument("--vision-model", required=True)
@@ -121,7 +158,6 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--manifest", type=Path, default=benchmark.DEFAULT_MANIFEST)
     run.add_argument("--limit", type=int, help="only the first N questions")
     run.add_argument("--psm", type=int, default=3)
-    run.add_argument("--split", default="validation")
     run.add_argument("--name", help="run name, default <text-model>__<vision-model>")
     run.add_argument("--runs-dir", type=Path, default=benchmark.DEFAULT_RUNS_DIR)
     run.set_defaults(func=cmd_run)

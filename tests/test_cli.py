@@ -23,7 +23,7 @@ def test_benchmark_commands_parse() -> None:
     parser = build_parser()
     args = parser.parse_args(["benchmark", "run", "--text-model", "a", "--vision-model", "b"])
     assert args.pipelines == "text,vision,hybrid"
-    assert args.manifest == Path("benchmarks/docvqa_validation_200.csv")
+    assert args.manifest == Path("benchmarks/pilot_300.csv")
     args = parser.parse_args(["benchmark", "report", "runs/x", "--tolerance", "0.05"])
     assert args.tolerance == 0.05
 

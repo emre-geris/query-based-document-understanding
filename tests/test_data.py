@@ -11,7 +11,6 @@ from qdu.data import (
     stratified_sample,
     write_manifest,
 )
-from qdu.data.docvqa import record_from_row
 
 
 def make_records() -> list[QARecord]:
@@ -77,17 +76,3 @@ def test_manifest_round_trip(tmp_path: Path) -> None:
     path = tmp_path / "manifest.csv"
     write_manifest(records, path)
     assert read_manifest(path) == records
-
-
-def test_record_from_docvqa_row() -> None:
-    row = {
-        "questionId": 49153,
-        "docId": 14465,
-        "question": "What is the value?",
-        "answers": ["0.28"],
-        "question_types": ["figure/diagram"],
-    }
-    record = record_from_row(row)
-    assert record.question_id == "49153"
-    assert record.doc_id == "14465"
-    assert record.answers == ("0.28",)

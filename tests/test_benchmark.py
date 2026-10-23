@@ -16,7 +16,7 @@ class PrintedCodeOcr:
     name = "printed-code"
 
     def extract(self, image: Image.Image, key: str) -> OcrResult:
-        return OcrResult(f"CODE{int(key) - 500}", self.name, 0.1)
+        return OcrResult(f"CODE{int(key.split('/')[1]) - 500}", self.name, 0.1)
 
 
 def reads_code_from_ocr(prompt: str, n_images: int) -> str:
@@ -31,17 +31,34 @@ def guesses_every_third(prompt: str, n_images: int) -> str:
 
 def test_build_sample_writes_manifest_and_info(tmp_path: Path, fake_docvqa) -> None:
     manifest = tmp_path / "sample.csv"
-    info = benchmark.build_sample(manifest, n=12, min_per_stratum=2, dataset=fake_docvqa)
+    info = benchmark.build_sample(
+        manifest,
+        datasets=["docvqa"],
+        per_dataset=12,
+        split=None,
+        min_per_stratum=2,
+        loaded={"docvqa": fake_docvqa},
+    )
     records = read_manifest(manifest)
     assert len(records) == 12
-    assert info["sample_strata"] == {s: 3 for s in info["population_strata"]}
+    assert all(r.question_id.startswith("docvqa/") and r.split for r in records)
+    source = info["sources"]["docvqa"]
+    assert source["sample_strata"] == {s: 3 for s in source["population_strata"]}
+    assert {r.stratum for r in records} == {f"docvqa/{s}" for s in source["population_strata"]}
     saved = json.loads(benchmark.info_path(manifest).read_text())
     assert saved["manifest_sha256"] == info["manifest_sha256"]
 
 
 def test_run_and_report(tmp_path: Path, fake_docvqa) -> None:
     manifest = tmp_path / "sample.csv"
-    benchmark.build_sample(manifest, n=12, min_per_stratum=2, dataset=fake_docvqa)
+    benchmark.build_sample(
+        manifest,
+        datasets=["docvqa"],
+        per_dataset=12,
+        split=None,
+        min_per_stratum=2,
+        loaded={"docvqa": fake_docvqa},
+    )
     run_dir = tmp_path / "run"
 
     def run():
@@ -51,7 +68,7 @@ def test_run_and_report(tmp_path: Path, fake_docvqa) -> None:
             vision_model=FakeModel(name="vlm-fake", responder=guesses_every_third),
             ocr=PrintedCodeOcr(),
             manifest=manifest,
-            dataset=fake_docvqa,
+            loaded={"docvqa": fake_docvqa},
         )
 
     first = run()
@@ -59,10 +76,11 @@ def test_run_and_report(tmp_path: Path, fake_docvqa) -> None:
     assert run().skipped == 36  # resumable
     assert json.loads((run_dir / "run_info.json").read_text())["text_model"] == "text-fake"
 
-    summary = benchmark.report(run_dir)
+    summary, by_dataset = benchmark.report(run_dir)
+    assert set(by_dataset.by_stratum) == {"docvqa"}
     assert summary.overall.mean_anls["text"] == 1.0
     assert summary.overall.oracle_anls == 1.0
     assert summary.overall.label_counts == {"text": 12, "vision": 0, "hybrid": 0}
-    for name in ("summary.json", "by_stratum.csv", "oracle_labels.csv"):
+    for name in ("summary.json", "by_dataset.csv", "by_stratum.csv", "oracle_labels.csv"):
         assert (run_dir / name).exists()
     assert "ALL" in benchmark.format_summary(summary)
