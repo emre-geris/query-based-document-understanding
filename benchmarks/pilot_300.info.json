@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-23T18:56:42",
+  "git_commit": "11236823e681f77361c2542c3271e51995cac4b6",
+  "git_dirty": false,
+  "python": "3.13.6",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "packages": {
+    "datasets": "5.1.0",
+    "pillow": "13.0.0",
+    "pytesseract": "0.3.13"
+  },
+  "datasets": [
+    "docvqa",
+    "infographicvqa",
+    "chartqa"
+  ],
+  "router_split": "train",
+  "per_dataset": 100,
+  "min_per_stratum": 5,
+  "seed": 42,
+  "one_per_document": true,
+  "questions": 300,
+  "sources": {
+    "docvqa": {
+      "hf": "lmms-lab/DocVQA/DocVQA:validation",
+      "license": "RRC DocVQA terms (research use)",
+      "population_questions": 3194,
+      "population_documents": 763,
+      "population_strata": {
+        "table/list": 967,
+        "layout": 815,
+        "form": 468,
+        "free_text": 430,
+        "handwritten": 180,
+        "figure/diagram": 150,
+        "others": 126,
+        "Image/Photo": 41,
+        "Yes/No": 17
+      },
+      "sample_strata": {
+        "layout": 24,
+        "table/list": 16,
+        "free_text": 14,
+        "form": 13,
+        "handwritten": 8,
+        "figure/diagram": 7,
+        "others": 7,
+        "Image/Photo": 6,
+        "Yes/No": 5
+      }
+    },
+    "infographicvqa": {
+      "hf": "lmms-lab/DocVQA/InfographicVQA:validation",
+      "license": "RRC InfographicVQA terms (research use)",
+      "population_questions": 1624,
+      "population_documents": 290,
+      "population_strata": {
+        "single span": 960,
+        "comparison": 170,
+        "counting": 164,
+        "arithmetic": 154,
+        "multi-span": 97,
+        "question span": 79
+      },
+      "sample_strata": {
+        "single span": 33,
+        "counting": 17,
+        "comparison": 14,
+        "arithmetic": 13,
+        "multi-span": 12,
+        "question span": 11
+      }
+    },
+    "chartqa": {
+      "hf": "HuggingFaceM4/ChartQA/default:test",
+      "license": "GPL-3.0 (ChartQA repository)",
+      "population_questions": 1535,
+      "population_documents": 908,
+      "population_strata": {
+        "human": 776,
+        "augmented": 759
+      },
+      "sample_strata": {
+        "augmented": 59,
+        "human": 41
+      }
+    }
+  },
+  "manifest_sha256": "435dae90793d60b2fbe4b4606d72bccf420f44a9dad2fddf6836158a3a0e56d8"
+}
