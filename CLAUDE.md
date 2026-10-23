@@ -56,7 +56,7 @@ Each source uses its **labelled evaluation split**, not its training split: Qwen
 | `docvqa` | `lmms-lab/DocVQA` / DocVQA | validation | 5,349 q, ~1.1 GB | router train/val/test | RRC DocVQA terms (research) |
 | `infographicvqa` | `lmms-lab/DocVQA` / InfographicVQA | validation | 2,801 q, ~0.3 GB | router train/val/test | RRC InfographicVQA terms (research) |
 | `chartqa` | `HuggingFaceM4/ChartQA` | test | 2,500 q, ~0.1 GB | router train/val/test | GPL-3.0 |
-| `tatdqa` | `next-tat/TAT-DQA` (PDF zip + gold JSON) | test | — | unseen-data test only | CC BY 4.0 |
+| `tatdqa` | `next-tat/TAT-DQA` (docs zip with page PNGs + gold JSON) | test | 1,663 q / 277 docs (257 single-page) | unseen-data test only | CC BY 4.0 |
 | DUDE | — | — | — | optional extra test | — |
 
 ## Roadmap

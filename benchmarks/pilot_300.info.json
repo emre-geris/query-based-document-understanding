@@ -1,6 +1,6 @@
 {
-  "date": "2026-10-23T18:56:42",
-  "git_commit": "11236823e681f77361c2542c3271e51995cac4b6",
+  "date": "2026-10-23T18:57:41",
+  "git_commit": "f41510c942be63da141b38dee91318647fe100f9",
   "git_dirty": false,
   "python": "3.13.6",
   "platform": "Windows-11-10.0.26300-SP0",
@@ -86,5 +86,5 @@
       }
     }
   },
-  "manifest_sha256": "435dae90793d60b2fbe4b4606d72bccf420f44a9dad2fddf6836158a3a0e56d8"
+  "manifest_sha256": "5c478956805b9504efb584b233969650d46d6b34b55640221a27e65e53500830"
 }
