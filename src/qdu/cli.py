@@ -135,7 +135,11 @@ def build_parser() -> argparse.ArgumentParser:
     data = sub.add_parser("data", help="download and inspect datasets")
     data_sub = data.add_subparsers(dest="data_command", required=True)
     download = data_sub.add_parser("download", help="download datasets to the HF cache")
-    download.add_argument("--datasets", default=",".join(benchmark.PILOT_DATASETS))
+    download.add_argument(
+        "--datasets",
+        default="docvqa,infographicvqa,chartqa,tatdqa",
+        help="comma-separated: docvqa, infographicvqa, chartqa, tatdqa (default: all)",
+    )
     download.set_defaults(func=cmd_data_download)
 
     bench = sub.add_parser("benchmark", help="evaluate the pipelines")

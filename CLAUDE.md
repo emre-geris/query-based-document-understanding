@@ -58,7 +58,7 @@ Each source uses its **labelled evaluation split**, not its training split: offi
 | `docvqa` | `lmms-lab/DocVQA` / DocVQA | validation | 5,349 q, ~1.1 GB | router train/val/test | RRC DocVQA terms (research) |
 | `infographicvqa` | `lmms-lab/DocVQA` / InfographicVQA | validation | 2,801 q, ~0.3 GB | router train/val/test | RRC InfographicVQA terms (research) |
 | `chartqa` | `HuggingFaceM4/ChartQA` | test | 2,500 q, ~0.1 GB | router train/val/test | GPL-3.0 |
-| `tatdqa` | `next-tat/TAT-DQA` (docs zip with page PNGs + gold JSON) | test | 1,663 q / 277 docs (257 single-page) | unseen-data test only | CC BY 4.0 |
+| `tatdqa` | `next-tat/TAT-DQA` (docs zip with page PNGs + gold JSON) | test | 1,655 q on 291 pages (8 cross-page q skipped) | unseen-data test only | CC BY 4.0 |
 | DUDE | — | — | — | optional extra test | — |
 
 ## Roadmap
@@ -90,7 +90,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 
 ### Phase 2 — Data & labels (H4–H7)
 - [x] H · Download TAT-DQA test files (`tatdqa_docs_test.zip`, `tatdqa_dataset_test_gold.json`) into the HF cache
-- [ ] H · TAT-DQA loader from the page PNGs in the docs zip; single-page documents first (test-only; never used for training or λ selection)
+- [x] H · TAT-DQA loader (`qdu.data.tatdqa`): each question mapped to its evidence page from `block_mapping`; cross-page questions skipped; router split fixed to `test`
 - [ ] R · Batch labelling: every train/val question × 3 paths, resumable, cost logged
 - [ ] E · Label table: per question and path → ANLS, cost; oracle label at chosen tolerance
 

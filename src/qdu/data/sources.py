@@ -38,6 +38,10 @@ class SourceSpec:
     image_column: str = "image"
     needs_image_bytes: bool = False
     """True when the adapter derives the document id from the raw image bytes."""
+    custom_loader: "Callable[[], Dataset] | None" = None
+    """Builds the dataset when it is not a plain Hugging Face dataset (e.g. TAT-DQA)."""
+    fixed_split: str | None = None
+    """Router split for every question (e.g. ``test`` for unseen-data test sets)."""
 
 
 def _docvqa(index: int, row: dict[str, Any]) -> QARecord:
@@ -84,6 +88,23 @@ def _chartqa(index: int, row: dict[str, Any]) -> QARecord:
     )
 
 
+def _tatdqa(index: int, row: dict[str, Any]) -> QARecord:
+    return QARecord(
+        question_id=f"tatdqa/{row['uid']}",
+        doc_id=f"tatdqa/{row['doc_uid']}_p{row['page']}",
+        question=row["question"],
+        answers=tuple(row.get("answers") or ()),
+        question_types=(row.get("answer_type") or "unknown", row.get("scale") or "no-scale"),
+        dataset="tatdqa",
+    )
+
+
+def _load_tatdqa() -> "Dataset":
+    from qdu.data.tatdqa import load_tatdqa
+
+    return load_tatdqa()
+
+
 SOURCES: dict[str, SourceSpec] = {
     "docvqa": SourceSpec(
         name="docvqa",
@@ -123,12 +144,26 @@ SOURCES: dict[str, SourceSpec] = {
         adapter=_chartqa,
         needs_image_bytes=True,
     ),
+    "tatdqa": SourceSpec(
+        name="tatdqa",
+        hf_id="next-tat/TAT-DQA",
+        hf_config=None,
+        hf_split="test",
+        role="unseen-data test only",
+        license="CC BY 4.0",
+        metadata_columns=("uid", "doc_uid", "page", "question", "answers", "answer_type", "scale"),
+        adapter=_tatdqa,
+        custom_loader=_load_tatdqa,
+        fixed_split="test",
+    ),
 }
 
 DatasetLoader = Callable[[SourceSpec], "Dataset"]
 
 
 def _hf_loader(spec: SourceSpec) -> "Dataset":
+    if spec.custom_loader is not None:
+        return spec.custom_loader()
     from datasets import load_dataset
 
     return load_dataset(spec.hf_id, spec.hf_config, split=spec.hf_split)
@@ -156,7 +191,8 @@ def iter_source_records(name: str, dataset: "Dataset") -> Iterator[QARecord]:
     view = view.select_columns(list(spec.metadata_columns))
     for index, row in enumerate(view):
         record = spec.adapter(index, row)
-        yield replace(record, split=assign_split(record.dataset, record.doc_id))
+        split = spec.fixed_split or assign_split(record.dataset, record.doc_id)
+        yield replace(record, split=split)
 
 
 class ImageStore:
