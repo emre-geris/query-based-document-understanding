@@ -3,6 +3,7 @@ name = "query-based-document-understanding"
 version = "0.1.0"
 description = "Query-aware document understanding system that selects a text, vision or hybrid pipeline per query."
 authors = [{ name = "Hasan Emre Geriş", email = "7emregeris@gmail.com" }]
+readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "datasets>=5.0.1",
