@@ -21,9 +21,9 @@ pipeline at a fraction of the cost.
 flowchart LR
     Q[Query] --> R{Router}
     D[Document page] --> R
-    R -->|text-answerable| T[Text pipeline<br/>OCR → LLM]
-    R -->|layout / visual| V[Vision pipeline<br/>VLM on page image]
-    R -->|mixed evidence| H[Hybrid pipeline<br/>OCR text + image]
+    R -->|text-answerable| T[Text pipeline<br/>OCR → Qwen3.5]
+    R -->|layout / visual| V[Vision pipeline<br/>Qwen3.5 on page image]
+    R -->|mixed evidence| H[Hybrid pipeline<br/>Qwen3.5 on OCR text + image]
     T --> A[Answer]
     V --> A
     H --> A
@@ -34,7 +34,7 @@ flowchart LR
 | Text, vision and hybrid pipelines | done (model-provider independent) |
 | OCR (Tesseract, cached) | done |
 | Benchmark: DocVQA sample, ANLS, cost, routing oracle | done |
-| Model providers | not chosen yet (a fake model is used for tests) |
+| Model | Qwen3.5-4B via vLLM (provider in progress; a fake model is used for tests) |
 | Router | next: trained on the routing oracle's labels |
 
 ## Repository layout

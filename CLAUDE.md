@@ -45,11 +45,13 @@ Never use `pip install` or edit `uv.lock` by hand.
 - Primary development is on Windows. Tesseract is expected on `PATH` or at `C:\Program Files\Tesseract-OCR\tesseract.exe`.
 - Datasets are downloaded by `qdu data download` into the user's Hugging Face cache (`~/.cache/huggingface`), never into the repo.
 - Keep the virtual environment outside OneDrive: set `UV_PROJECT_ENVIRONMENT` (e.g. `C:\Users\<you>\venvs\qdu`) before `uv sync`.
-- No local GPU. Qwen2.5-VL runs behind a vLLM OpenAI-compatible server (Colab / Kaggle / university GPU); the code reaches it over HTTP, so everything else runs on a laptop.
+- No local GPU. Qwen3.5 runs behind a vLLM OpenAI-compatible server on a Kaggle T4 (choose **GPU T4 x2**, not P100) or a university GPU; benchmark runs execute on that machine against `localhost` so measured latency excludes network time. Everything else runs on a laptop.
+- Qwen3.5 thinks by default. Every request must disable it (`chat_template_kwargs: {enable_thinking: false}`); otherwise answers, latency and token cost are all distorted.
+- T4 has no bf16: serve in fp16 and check the pilot for numerical problems.
 
 ## Datasets
 
-Each source uses its **labelled evaluation split**, not its training split: Qwen2.5-VL was trained on the official training sets, so their questions would overstate every path. Router splits are cut from these questions **by document** with a salted hash (`qdu.data.splits`, 60/20/20), so a document never appears in two splits. Ids are dataset-prefixed (`docvqa/49153`).
+Each source uses its **labelled evaluation split**, not its training split: official training splits are standard VLM training data, so their questions would overstate every path. Router splits are cut from these questions **by document** with a salted hash (`qdu.data.splits`, 60/20/20), so a document never appears in two splits. Ids are dataset-prefixed (`docvqa/49153`).
 
 | Name | Source (HF) | Split used | Size | Role | Licence |
 |---|---|---|---|---|---|
@@ -65,7 +67,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 
 **Ordering rule.** Phases group work by goal and deadline, not strict sequence. Work that only pays off if the pilot shows a usable gap (Phase 3–4: signals, router, full labelling) does not start before the go/no-go on 30 Oct. Small items needed in either outcome (data, splits, tooling) may be pulled forward; move such an item into the phase where it is actually needed.
 
-**Target system.** Per question: OCR + layout → signals S1–S4 (no LM call, < 50 ms) → router picks the path maximizing `predicted_quality − λ·cost` → Qwen2.5-VL answers via text / vision / hybrid (same model, one call) → answer, ANLS, latency, tokens logged.
+**Target system.** Per question: OCR + layout → signals S1–S4 (no LM call, < 50 ms) → router picks the path maximizing `predicted_quality − λ·cost` → Qwen3.5 answers via text / vision / hybrid (same model, one call) → answer, ANLS, latency, tokens logged.
 
 ### Phase 0 — Foundation (done)
 - [x] Repo, uv, ruff, pre-commit, pytest, CI
@@ -76,8 +78,8 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [x] Resumable runner, provenance, `qdu benchmark sample|run|report`, `qdu answer`
 
 ### Phase 1 — Pilot & go/no-go (H3–H4, decision **30 Oct**)
-- [ ] R · vLLM server for Qwen2.5-VL (3B first, 7B if memory allows) + setup notes in README
-- [ ] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, token usage, timeouts, retries)
+- [ ] R · vLLM server for **Qwen3.5-4B** on Kaggle T4 (thinking off, fp16) + setup notes in README; Qwen3.5-9B (2×T4 tensor-parallel or quantized) only if the pilot justifies it
+- [ ] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, thinking disabled, token usage, timeouts, retries)
 - [x] H · Dataset registry (`qdu.data.sources`): DocVQA, InfographicVQA, ChartQA on the same `QARecord`; `qdu data download`
 - [x] H · Document-level train / val / test splits (hash-based, `qdu.data.splits`); prerequisite for drawing the pilot from the router-train split
 - [x] H · Download the pilot datasets (`qdu data download`): DocVQA 5,349 q / 1,286 docs, InfographicVQA 2,801 / 500, ChartQA 2,500 / 1,509
@@ -93,8 +95,8 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [ ] E · Label table: per question and path → ANLS, cost; oracle label at chosen tolerance
 
 ### Phase 3 — Signals (H5–H7)
-- [ ] H · OCR with word boxes + confidences (`image_to_data`); optional PaddleOCR backend
-- [ ] H · Layout detection (DocLayout-YOLO): text / table / figure regions per page, cached
+- [ ] H · OCR with word boxes + confidences: Tesseract 5 (`image_to_data`, cheap baseline) and a PaddleOCR 3.x / PP-OCRv5 backend; choose by accuracy vs. time, since OCR time counts as cost
+- [ ] H · Layout detection with PP-DocLayout (PaddleOCR 3.x; S/M variant first for speed, V3 if accuracy needs it): text / table / figure regions per page, cached; its time is reported next to the < 50 ms router decision time
 - [ ] H · S1 question features (wh-type, numeric/visual cue words, length, TF-IDF)
 - [ ] H · S2 OCR-text features (word count, mean/low confidence share, numeric density)
 - [ ] H · S3 page features (region area shares, table/figure counts, image size)
@@ -119,8 +121,10 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [ ] Ortak · Vize (16 Nov upload), final (14 Dec), report + demo (28 Dec), poster (5 Jan)
 
 ### Decisions
-- Same model (Qwen2.5-VL) serves all three paths; the text path sends no image. Keeps differences attributable to input modality.
+- Same model serves all three paths; the text path sends no image. Keeps differences attributable to input modality.
 - Samples take at most one question per document; splits are by document.
-- Use each dataset's labelled evaluation split (DocVQA/InfographicVQA validation, ChartQA test) because the official training splits are in Qwen2.5-VL's training data.
+- Use each dataset's labelled evaluation split (DocVQA/InfographicVQA validation, ChartQA test) because official training splits are standard VLM training data.
+- Model: **Qwen3.5-4B** instead of the presentation's Qwen2.5-VL (Oct 2026). Newer (Mar 2026), natively multimodal, fits one 16 GB T4, stronger on OCR (OCRBench 85.0). Tell the advisor; cite the Qwen3.5 model card instead of the Qwen2.5-VL report.
+- Tools: PP-DocLayout (PaddleOCR 3.x) instead of DocLayout-YOLO for layout; PP-OCRv5 as the stronger OCR backend next to Tesseract (Oct 2026).
 - Open: ChartQA is conventionally scored with relaxed accuracy (5% numeric tolerance), not ANLS. Decide before the pilot report whether to add it next to ANLS for ChartQA.
 - The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.
