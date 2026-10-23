@@ -1,0 +1,42 @@
+# ---- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# ---- Virtual environments (uv creates .venv at the project root) ------------
+.venv/
+venv/
+
+# ---- Tooling caches ---------------------------------------------------------
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# ---- Secrets ----------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ---- Data & models (too large / licensed; scripts download them) -----------
+/data/
+/models/
+*.safetensors
+*.ckpt
+*.pt
+*.bin
+
+# ---- Benchmark runs and local caches ----------------------------------------
+/runs/
+
+# ---- Editors & OS -----------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
