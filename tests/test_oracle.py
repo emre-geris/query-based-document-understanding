@@ -56,3 +56,19 @@ def test_incomplete_questions_are_excluded_and_counted() -> None:
 def test_no_complete_question_raises() -> None:
     with pytest.raises(ValueError, match="no question"):
         summarize([ScoredPrediction("q1", "form", "text", 1.0)], ORDER)
+
+
+def test_measured_cost_overrides_the_fixed_order() -> None:
+    scores = {"text": 1.0, "vision": 1.0, "hybrid": 1.0}
+    costs = {"text": 1.8, "vision": 1.2, "hybrid": 2.4}  # OCR made text slower than vision
+    assert oracle_label(scores, ORDER, 0.0, costs) == "vision"
+    assert oracle_label(scores, ORDER, 0.0, {"text": None, "vision": 1.2, "hybrid": 2.4}) == "text"
+
+
+def test_summarize_uses_costs_from_rows() -> None:
+    rows = [
+        ScoredPrediction("q1", "form", "text", 1.0, cost=2.0),
+        ScoredPrediction("q1", "form", "vision", 1.0, cost=1.0),
+        ScoredPrediction("q1", "form", "hybrid", 1.0, cost=3.0),
+    ]
+    assert summarize(rows, ORDER).labels == {"q1": "vision"}

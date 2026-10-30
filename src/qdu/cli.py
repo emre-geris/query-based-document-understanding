@@ -108,8 +108,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    result = benchmark.report(args.run_dir, tolerance=args.tolerance)
-    print("Quality and cost per question")
+    result = benchmark.report(args.run_dir, tolerance=args.tolerance, cost=args.cost)
+    print(f"Quality and cost per question (oracle ties broken by {args.cost})")
     print(benchmark.format_metrics(result.metrics))
     print("\nANLS and oracle per dataset")
     print(benchmark.format_summary(result.by_dataset, "dataset"))
@@ -117,7 +117,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     print(benchmark.format_summary(result.by_stratum))
     print(
         "\nWrote summary.json, metrics.csv, by_dataset.csv, by_stratum.csv, oracle_labels.csv"
-        f" to {args.run_dir}"
+        f" to {benchmark.report_dir(args.run_dir, args.cost)}"
     )
     return 0
 
@@ -173,6 +173,12 @@ def build_parser() -> argparse.ArgumentParser:
     rep = bench_sub.add_parser("report", help="summarize a run")
     rep.add_argument("run_dir", type=Path)
     rep.add_argument("--tolerance", type=float, default=0.0, help="ANLS tie tolerance")
+    rep.add_argument(
+        "--cost",
+        choices=("latency", "tokens"),
+        default="latency",
+        help="cost used to break oracle ties (tokens: written to <run>/cost-tokens/)",
+    )
     rep.set_defaults(func=cmd_report)
     return parser
 

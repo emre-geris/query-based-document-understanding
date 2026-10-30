@@ -57,14 +57,38 @@ def read_predictions(path: Path) -> Iterator[dict[str, Any]]:
                 yield json.loads(line)
 
 
-def scored_predictions(path: Path) -> list[ScoredPrediction]:
+COST_MEASURES = ("latency", "tokens")
+
+
+def call_cost(row: dict[str, Any], measure: str = "latency") -> float | None:
+    """Cost of one call: seconds (model + OCR) or tokens (input + output; OCR is free here).
+
+    Latency is what a self-hosted deployment pays and depends on the hardware; tokens are a
+    hardware-independent proxy for API pricing, under which OCR costs nothing.
+    """
+    if measure == "latency":
+        if row.get("model_latency_s") is None:
+            return None
+        return row["model_latency_s"] + (row.get("ocr_latency_s") or 0.0)
+    if measure == "tokens":
+        if row.get("input_tokens") is None or row.get("output_tokens") is None:
+            return None
+        return float(row["input_tokens"] + row["output_tokens"])
+    raise ValueError(f"unknown cost measure {measure!r}; choose from {', '.join(COST_MEASURES)}")
+
+
+def scored_predictions(path: Path, cost: str = "latency") -> list[ScoredPrediction]:
     """Latest successful row per (question, pipeline), ready for the oracle analysis."""
     latest: dict[tuple[str, str], ScoredPrediction] = {}
     for row in read_predictions(path):
         if row["error"] is None:
             key = (row["question_id"], row["pipeline"])
             latest[key] = ScoredPrediction(
-                row["question_id"], row["stratum"], row["pipeline"], row["anls"]
+                row["question_id"],
+                row["stratum"],
+                row["pipeline"],
+                row["anls"],
+                call_cost(row, cost),
             )
     return list(latest.values())
 

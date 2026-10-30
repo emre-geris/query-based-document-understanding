@@ -89,3 +89,17 @@ def test_failures_are_recorded_and_retried(tmp_path: Path) -> None:
 
     run_pipelines(RECORDS[:1], blank, [broken], out)
     assert broken.calls == 2  # failed pair is retried
+
+
+def test_call_cost_measures() -> None:
+    import pytest
+
+    from qdu.runner import call_cost
+
+    row = {"model_latency_s": 1.5, "ocr_latency_s": 0.5, "input_tokens": 100, "output_tokens": 4}
+    assert call_cost(row, "latency") == 2.0
+    assert call_cost({**row, "ocr_latency_s": None}, "latency") == 1.5
+    assert call_cost(row, "tokens") == 104.0
+    assert call_cost({**row, "input_tokens": None}, "tokens") is None
+    with pytest.raises(ValueError, match="unknown cost"):
+        call_cost(row, "dollars")

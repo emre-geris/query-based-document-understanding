@@ -167,7 +167,7 @@ def _group_dict(g: GroupSummary) -> dict[str, Any]:
 def _write_groups(path: Path, summary: OracleSummary, label: str) -> None:
     pipelines = summary.pipelines
     with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")
         w.writerow([label, "n", *pipelines, "oracle", "best_single", "headroom"])
         for name, g in [("ALL", summary.overall), *summary.by_stratum.items()]:
             w.writerow(
@@ -193,15 +193,26 @@ class Report:
     metrics: list[MetricRow]
 
 
-def report(run_dir: Path, *, tolerance: float = 0.0) -> Report:
-    """Write summary.json, metrics.csv, by_dataset.csv, by_stratum.csv and oracle_labels.csv."""
-    rows = scored_predictions(run_dir / "predictions.jsonl")
+def report_dir(run_dir: Path, cost: str) -> Path:
+    """Latency reports live in the run directory; other cost measures in ``cost-<measure>/``."""
+    return run_dir if cost == "latency" else run_dir / f"cost-{cost}"
+
+
+def report(run_dir: Path, *, tolerance: float = 0.0, cost: str = "latency") -> Report:
+    """Write summary.json, metrics.csv, by_dataset.csv, by_stratum.csv and oracle_labels.csv.
+
+    ``cost`` ("latency" or "tokens") decides how the oracle breaks ties between pipelines
+    with equal scores, and therefore the oracle labels and the oracle's cost.
+    """
+    out = report_dir(run_dir, cost)
+    out.mkdir(parents=True, exist_ok=True)
+    rows = scored_predictions(run_dir / "predictions.jsonl", cost)
     present = {r.pipeline for r in rows}
     pipelines = tuple(p for p in DEFAULT_COST_ORDER if p in present)
     by_stratum = summarize(rows, pipelines, tolerance=tolerance)
     by_dataset = summarize(
         [
-            ScoredPrediction(r.question_id, _dataset_of(r.question_id), r.pipeline, r.anls)
+            ScoredPrediction(r.question_id, _dataset_of(r.question_id), r.pipeline, r.anls, r.cost)
             for r in rows
         ],
         pipelines,
@@ -210,6 +221,7 @@ def report(run_dir: Path, *, tolerance: float = 0.0) -> Report:
 
     result = {
         "pipelines": list(by_stratum.pipelines),
+        "cost_measure": cost,
         "tolerance": tolerance,
         "incomplete_questions": by_stratum.incomplete_questions,
         "overall": _group_dict(by_stratum.overall),
@@ -220,16 +232,18 @@ def report(run_dir: Path, *, tolerance: float = 0.0) -> Report:
         read_predictions(run_dir / "predictions.jsonl"), pipelines, by_stratum.labels
     )
     result["metrics"] = [asdict(m) for m in metrics]
-    with (run_dir / "metrics.csv").open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(MetricRow.__dataclass_fields__))
+    with (out / "metrics.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(MetricRow.__dataclass_fields__), lineterminator="\n")
         w.writeheader()
         w.writerows(asdict(m) for m in metrics)
-    (run_dir / "summary.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    _write_groups(run_dir / "by_dataset.csv", by_dataset, "dataset")
-    _write_groups(run_dir / "by_stratum.csv", by_stratum, "stratum")
+    (out / "summary.json").write_text(
+        json.dumps(result, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    _write_groups(out / "by_dataset.csv", by_dataset, "dataset")
+    _write_groups(out / "by_stratum.csv", by_stratum, "stratum")
 
-    with (run_dir / "oracle_labels.csv").open("w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
+    with (out / "oracle_labels.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
         w.writerow(["question_id", "oracle_pipeline"])
         w.writerows(sorted(by_stratum.labels.items()))
     return Report(by_stratum, by_dataset, metrics)

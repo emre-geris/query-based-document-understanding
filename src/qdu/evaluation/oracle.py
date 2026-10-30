@@ -4,13 +4,18 @@ Given every pipeline's score on every question, the *oracle* picks the best pipe
 question. Its mean ANLS is the ceiling any router can reach with these pipelines; the gap to
 the best single pipeline is the most a router can add. The oracle's choice, breaking ties
 towards the cheaper pipeline, is the training label for a learned router.
+
+Ties are broken by each question's **measured** cost (seconds or tokens) when every tied
+pipeline has one, and only otherwise by ``DEFAULT_COST_ORDER``. The pilot showed why: with OCR
+time included, the text path was on average slower than the vision path on a Colab L4, so a
+fixed text < vision < hybrid order mislabelled questions that every pipeline answered.
 """
 
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-# Same model for vision and hybrid, hybrid adds the OCR text to the prompt -> costliest.
+# Fallback only, when measured costs are missing (e.g. a provider that reports no tokens).
 DEFAULT_COST_ORDER: tuple[str, ...] = ("text", "vision", "hybrid")
 
 
@@ -20,6 +25,8 @@ class ScoredPrediction:
     stratum: str
     pipeline: str
     anls: float
+    cost: float | None = None
+    """Measured cost of this call (seconds or tokens); used to break ties."""
 
 
 @dataclass
@@ -48,11 +55,21 @@ class OracleSummary:
     incomplete_questions: int = 0
 
 
-def oracle_label(scores: dict[str, float], cost_order: Sequence[str], tolerance: float) -> str:
-    """Cheapest pipeline whose score is within ``tolerance`` of the best score."""
+def oracle_label(
+    scores: dict[str, float],
+    cost_order: Sequence[str],
+    tolerance: float,
+    costs: dict[str, float | None] | None = None,
+) -> str:
+    """Cheapest pipeline whose score is within ``tolerance`` of the best score.
+
+    "Cheapest" uses the measured ``costs`` when every candidate has one, else ``cost_order``.
+    """
     best = max(scores.values())
     rank = {p: i for i, p in enumerate(cost_order)}
     candidates = [p for p, s in scores.items() if s >= best - tolerance]
+    if costs is not None and all(costs.get(p) is not None for p in candidates):
+        return min(candidates, key=lambda p: (costs[p], rank.get(p, len(rank)), p))
     return min(candidates, key=lambda p: (rank.get(p, len(rank)), p))
 
 
@@ -79,9 +96,11 @@ def summarize(
 ) -> OracleSummary:
     """Summarize over questions that have a score for every pipeline (complete cases only)."""
     scores: dict[str, dict[str, float]] = defaultdict(dict)
+    costs: dict[str, dict[str, float | None]] = defaultdict(dict)
     stratum: dict[str, str] = {}
     for r in rows:
         scores[r.question_id][r.pipeline] = r.anls
+        costs[r.question_id][r.pipeline] = r.cost
         stratum[r.question_id] = r.stratum
     names = tuple(pipelines) if pipelines else tuple(sorted({r.pipeline for r in rows}))
     complete = {q: s for q, s in scores.items() if all(p in s for p in names)}
@@ -89,7 +108,7 @@ def summarize(
         raise ValueError("no question has results for all pipelines")
     complete = {q: {p: s[p] for p in names} for q, s in complete.items()}
 
-    labels = {q: oracle_label(s, cost_order, tolerance) for q, s in complete.items()}
+    labels = {q: oracle_label(s, cost_order, tolerance, costs[q]) for q, s in complete.items()}
     groups: dict[str, dict[str, dict[str, float]]] = defaultdict(dict)
     for q, s in complete.items():
         groups[stratum[q]][q] = s

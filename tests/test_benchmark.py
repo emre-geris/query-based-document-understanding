@@ -9,6 +9,7 @@ from qdu import benchmark
 from qdu.data import read_manifest
 from qdu.models import FakeModel
 from qdu.ocr import OcrResult
+from qdu.runner import scored_predictions
 
 
 class PrintedCodeOcr:
@@ -90,7 +91,17 @@ def test_run_and_report(tmp_path: Path, fake_docvqa) -> None:
     assert "relaxed" in benchmark.format_metrics(result.metrics)
     assert summary.overall.mean_anls["text"] == 1.0
     assert summary.overall.oracle_anls == 1.0
-    assert summary.overall.label_counts == {"text": 12, "vision": 0, "hybrid": 0}
+    # Ties are broken by measured latency: the fake VLM takes 0 s, the text path pays 0.1 s of
+    # OCR, so questions the vision path also answers are labelled "vision", the rest "text".
+    vision_correct = {
+        r.question_id
+        for r in scored_predictions(run_dir / "predictions.jsonl")
+        if r.pipeline == "vision" and r.anls == 1.0
+    }
+    assert vision_correct
+    assert summary.labels == {
+        q: "vision" if q in vision_correct else "text" for q in summary.labels
+    }
     for name in (
         "summary.json",
         "metrics.csv",
