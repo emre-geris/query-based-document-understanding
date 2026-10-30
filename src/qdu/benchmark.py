@@ -173,6 +173,7 @@ def rescore(run_dir: Path) -> RescoreStats:
 
     path = run_dir / "predictions.jsonl"
     rows = list(read_predictions(path))
+    provenance = run_metadata()  # before rewriting predictions, which would mark the tree dirty
     changed, before, after = 0, [], []
     for row in rows:
         if row.get("error") is not None or row.get("raw_output") is None:
@@ -194,7 +195,7 @@ def rescore(run_dir: Path) -> RescoreStats:
         anls_before=sum(before) / len(before) if before else 0.0,
         anls_after=sum(after) / len(after) if after else 0.0,
     )
-    info = run_metadata(reason="re-derived predictions from raw_output", **asdict(stats))
+    info = {**provenance, "reason": "re-derived predictions from raw_output", **asdict(stats)}
     (run_dir / "rescore_info.json").write_text(
         json.dumps(info, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
