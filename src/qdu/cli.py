@@ -122,6 +122,40 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ocr_compare(args: argparse.Namespace) -> int:
+    from qdu.data import ImageStore, read_manifest
+    from qdu.ocr import create_ocr
+    from qdu.ocr.compare import (
+        compare_engines,
+        format_comparison,
+        summarize_engines,
+        write_comparison,
+    )
+    from qdu.provenance import file_sha256, run_metadata
+
+    records = read_manifest(args.manifest)[: args.limit]
+    specs = _names(args.engines)
+    engines = {spec: create_ocr(spec, benchmark.DEFAULT_OCR_CACHE, psm=args.psm) for spec in specs}
+    images = ImageStore()
+
+    def on_result(r) -> None:
+        mark = "yes" if r.answer_in_text else "no "
+        print(f"  {r.question_id:<28} {r.engine:<14} answer {mark} {r.latency_s:6.2f} s")
+
+    results = compare_engines(records, images.get, engines, on_result)
+    summary = summarize_engines(results)
+    info = run_metadata(
+        engines={spec: engine.name for spec, engine in engines.items()},
+        manifest=args.manifest.as_posix(),
+        manifest_sha256=file_sha256(args.manifest),
+        questions=len(records),
+    )
+    write_comparison(args.out, results, summary, info)
+    print("\n" + format_comparison(summary))
+    print(f"\nWrote pages.csv, summary.csv, run_info.json to {args.out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="qdu", description="Query-aware document understanding")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -145,6 +179,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="comma-separated: docvqa, infographicvqa, chartqa, tatdqa (default: all)",
     )
     download.set_defaults(func=cmd_data_download)
+
+    ocr = sub.add_parser("ocr", help="compare OCR engines")
+    ocr_sub = ocr.add_subparsers(dest="ocr_command", required=True)
+    compare = ocr_sub.add_parser("compare", help="answer coverage and time per OCR engine")
+    compare.add_argument("--engines", default="tesseract,paddle-mobile,paddle-server")
+    compare.add_argument("--manifest", type=Path, default=benchmark.DEFAULT_MANIFEST)
+    compare.add_argument("--limit", type=int, help="only the first N questions")
+    compare.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
+    compare.add_argument("--out", type=Path, default=Path("runs/ocr-compare"))
+    compare.set_defaults(func=cmd_ocr_compare)
 
     bench = sub.add_parser("benchmark", help="evaluate the pipelines")
     bench_sub = bench.add_subparsers(dest="benchmark_command", required=True)

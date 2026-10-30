@@ -41,6 +41,21 @@ def normalize_tokens(text: str) -> list[str]:
     return tokens
 
 
+def contains_answer(text: str, answers: Iterable[str]) -> bool:
+    """True if some gold answer occurs in ``text`` as a contiguous run of normalized tokens.
+
+    Used to measure OCR *coverage*: an answer missing from the OCR text cannot be produced by
+    the text path, whatever the language model does.
+    """
+    tokens = normalize_tokens(text)
+    for answer in answers:
+        target = normalize_tokens(answer)
+        n = len(target)
+        if n and any(tokens[i : i + n] == target for i in range(len(tokens) - n + 1)):
+            return True
+    return False
+
+
 def exact_match(prediction: str, answers: Iterable[str]) -> bool:
     pred = normalize_tokens(prediction)
     return any(pred == normalize_tokens(answer) for answer in answers)
