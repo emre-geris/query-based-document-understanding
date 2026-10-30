@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-30T18:30:08",
+  "git_commit": "b844f146f420243e66352f7866a5b0ae049beae7",
+  "git_dirty": true,
+  "python": "3.13.6",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "packages": {
+    "datasets": "5.1.0",
+    "openai": "3.41.0",
+    "pillow": "13.0.0",
+    "pytesseract": "0.3.13"
+  },
+  "reason": "re-derived predictions from raw_output",
+  "rows": 900,
+  "changed": 9,
+  "anls_before": 0.6893895870770945,
+  "anls_after": 0.6901633966009042
+}

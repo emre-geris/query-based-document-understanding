@@ -17,22 +17,26 @@ ANLS, then mean cost per question (latency = model + OCR seconds; tokens = input
 
 | Path | DocVQA | InfographicVQA | ChartQA | **All 300** | Latency | Tokens |
 |---|---|---|---|---|---|---|
-| Always text (OCR → LLM) | 0.605 | 0.311 | 0.204 | 0.373 | 1.39 s | 429 |
+| Always text (OCR → LLM) | 0.605 | 0.311 | 0.205 | 0.374 | 1.39 s | 429 |
 | Always vision | 0.949 | 0.731 | 0.843 | 0.841 | **1.22 s** | 2,103 |
-| Always hybrid | 0.949 | 0.783 | 0.829 | 0.854 | 2.46 s | 2,478 |
+| Always hybrid | 0.949 | 0.783 | 0.835 | 0.856 | 2.46 s | 2,478 |
 | **Oracle router** (latency ties) | 0.985 | 0.813 | 0.871 | **0.890** | **1.22 s** | 1,632 |
 | **Oracle router** (token ties) | 0.985 | 0.813 | 0.871 | **0.890** | 1.32 s | **1,336** |
 
-ChartQA relaxed accuracy (its standard metric): text 0.240, vision 0.870, hybrid 0.830,
+ChartQA relaxed accuracy (its standard metric): text 0.250, vision 0.870, hybrid 0.870,
 oracle 0.880. Exact match / F1 are in `metrics.csv`.
+
+Answers were re-derived from the raw model output after a cleaning fix (`rescore_info.json`):
+the hybrid path copied space thousands separators from the OCR text ("140 858" for gold
+"140858"), which both metrics scored as wrong. 9 of 900 answers changed; the oracle did not.
 
 ## Findings
 
-1. **There is headroom for a router.** A perfect router is +3.6 ANLS over the best single path
+1. **There is headroom for a router.** A perfect router is +3.4 ANLS over the best single path
    (hybrid) at half its latency, and +4.9 ANLS over always-vision at the same latency (or 37%
    fewer tokens). The gap appears on all three datasets.
 2. **The baseline to beat is always-vision, not always-hybrid.** Always-vision is within
-   1.3 ANLS of always-hybrid at half the latency, so it nearly meets the presentation's first
+   1.5 ANLS of always-hybrid at half the latency, so it nearly meets the presentation's first
    success criterion on its own. A router is only useful if it beats always-vision.
 3. **"Text is cheap" depends on how cost is measured.** The model answers from OCR text in
    0.25 s, but Tesseract on a CPU takes 1.15 s per page, so the text path is *slower* than
@@ -40,7 +44,10 @@ oracle 0.880. Exact match / F1 are in `metrics.csv`.
    measures.
 4. **Each path wins somewhere.** Oracle labels (latency ties): text 52, vision 235, hybrid 13.
    Text wins mainly on DocVQA (clean typed pages), hybrid on InfographicVQA.
-5. **OCR quality limits the text and hybrid paths.** Text ANLS is low on DocVQA scans and
+5. **OCR text shapes the answer format.** On ChartQA, vision and hybrid looked different
+   (0.843 vs 0.829 ANLS) mostly because hybrid wrote "140 858" as printed in the OCR text;
+   after normalising numbers they are equal on relaxed accuracy (0.870), with one real win each.
+6. **OCR quality limits the text and hybrid paths.** Text ANLS is low on DocVQA scans and
    infographics; a stronger OCR (PP-OCRv5) may raise both paths and change the label mix.
 
 ## Caveats

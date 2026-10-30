@@ -91,7 +91,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [x] E · Cost = OCR time + model latency (+ tokens) per path, reported side by side with ANLS (`metrics.csv`)
 - [x] Ortak · Run 3 paths on the pilot (Colab L4, 30 Oct): `results/pilot-qwen3.5-4b/` with README
 - [x] E · Oracle ties broken by measured per-question cost; reports for latency and token cost
-- [ ] Ortak · Go/no-go (team + advisor). Pilot evidence: oracle +4.9 ANLS over always-vision at equal latency (+3.6 over always-hybrid at half its latency); each path wins somewhere (labels 52/235/13). Recommendation: **go**, with always-vision as the main baseline
+- [ ] Ortak · Go/no-go (team + advisor). Pilot evidence: oracle +4.9 ANLS over always-vision at equal latency (+3.4 over always-hybrid at half its latency); each path wins somewhere (labels 52/235/13). Recommendation: **go**, with always-vision as the main baseline
 
 ### Phase 2 — Data & labels (H4–H7)
 - [x] H · Download TAT-DQA test files (`tatdqa_docs_test.zip`, `tatdqa_dataset_test_gold.json`) into the HF cache
@@ -119,7 +119,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 ### Phase 5 — Evaluation (H9–H11)
 - [ ] E · Paired bootstrap 95% CIs (router vs each baseline)
 - [ ] E/H · Unseen-data test on TAT-DQA
-- [ ] E · Success criteria table — revised after the pilot: the router must beat **always-vision** (more accurate at equal or lower cost), since always-vision alone is within 1.3 ANLS of always-hybrid at half the latency. Original: (cost ≥ 25% below always-hybrid with ≤ 1 ANLS point loss; S4 gain CI excludes 0; TAT-DQA: more accurate than always-text, cheaper than always-hybrid; decision < 50 ms)
+- [ ] E · Success criteria table — revised after the pilot: the router must beat **always-vision** (more accurate at equal or lower cost), since always-vision alone is within 1.5 ANLS of always-hybrid at half the latency. Original: (cost ≥ 25% below always-hybrid with ≤ 1 ANLS point loss; S4 gain CI excludes 0; TAT-DQA: more accurate than always-text, cheaper than always-hybrid; decision < 50 ms)
 
 ### Phase 6 — Demo & deliverables (H9–H14)
 - [ ] R · Gradio demo: upload page + question → chosen path, answer, latency (`qdu demo`)
@@ -136,4 +136,5 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - Images sent to the model are capped at 4 MP (aspect ratio kept; `QDU_MAX_IMAGE_PIXELS`) for both vision and hybrid paths; OCR uses the full-resolution page. Every run records GPU, vLLM version and request settings in `run_info.json`.
 - vLLM runs with prefix caching and the multimodal processor cache **off** (`--no-enable-prefix-caching --mm-processor-cache-gb 0`). The smoke test showed hybrid calls 3x faster than vision calls on the same page despite more input tokens, because the image was cached by the preceding vision call; with caches on, measured latency is not a fair cost.
 - Cost is reported two ways: latency (model + OCR seconds; hardware-specific, what self-hosting pays) and tokens (input + output; API-price proxy, OCR free). Conclusions that hold under only one measure must say so.
+- Answers are normalised by `clean_answer` for every path (prefixes, quotes, final period, space thousands separators). After changing it, re-derive finished runs with `qdu benchmark rescore` instead of re-running the GPU.
 - The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.
