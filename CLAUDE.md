@@ -27,7 +27,8 @@ Never use `pip install` or edit `uv.lock` by hand.
 - All code lives in the `qdu` package under `src/qdu/`, with tests in `tests/`. There are no standalone scripts; new entry points are `qdu` CLI subcommands in `cli.py`.
 - `notebooks/` holds GPU runbooks (Colab / Kaggle) that only call `qdu` commands; no logic lives in notebooks.
 - `benchmarks/` holds committed question manifests written by `qdu benchmark sample`; never edit them by hand.
-- `runs/` (benchmark outputs) and `data/` (caches) are gitignored.
+- `results/<run>/` holds GPU runs worth keeping (predictions, run_info, reports, a README with findings); they cannot be regenerated without a GPU, so they are committed. Reports inside are regenerated with `qdu benchmark report`.
+- `runs/` (scratch benchmark outputs) and `data/` (caches) are gitignored.
 
 ## Conventions
 
@@ -88,8 +89,9 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [x] H · Download the pilot datasets (`qdu data download`): DocVQA 5,349 q / 1,286 docs, InfographicVQA 2,801 / 500, ChartQA 2,500 / 1,509
 - [x] H · Pilot manifest: 300 questions (100 per dataset, one per document, router-train split) → `benchmarks/pilot_300.csv`
 - [x] E · Cost = OCR time + model latency (+ tokens) per path, reported side by side with ANLS (`metrics.csv`)
-- [ ] Ortak · Run 3 paths on the pilot, `qdu benchmark report`, per-dataset breakdown
-- [ ] Ortak · Go/no-go: oracle headroom over best single path and over "always hybrid" at equal cost. No usable gap → pivot to a measurement study on the same data
+- [x] Ortak · Run 3 paths on the pilot (Colab L4, 30 Oct): `results/pilot-qwen3.5-4b/` with README
+- [x] E · Oracle ties broken by measured per-question cost; reports for latency and token cost
+- [ ] Ortak · Go/no-go (team + advisor). Pilot evidence: oracle +4.9 ANLS over always-vision at equal latency (+3.6 over always-hybrid at half its latency); each path wins somewhere (labels 52/235/13). Recommendation: **go**, with always-vision as the main baseline
 
 ### Phase 2 — Data & labels (H4–H7)
 - [x] H · Download TAT-DQA test files (`tatdqa_docs_test.zip`, `tatdqa_dataset_test_gold.json`) into the HF cache
@@ -98,6 +100,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [ ] E · Label table: per question and path → ANLS, cost; oracle label at chosen tolerance
 
 ### Phase 3 — Signals (H5–H7)
+- [ ] H · Compare Tesseract vs PP-OCRv5 on the 300 pilot pages (answer coverage in OCR text, time); pilot text ANLS is low partly because of OCR quality
 - [ ] H · OCR with word boxes + confidences: Tesseract 5 (`image_to_data`, cheap baseline) and a PaddleOCR 3.x / PP-OCRv5 backend; choose by accuracy vs. time, since OCR time counts as cost
 - [ ] H · Layout detection with PP-DocLayout (PaddleOCR 3.x; S/M variant first for speed, V3 if accuracy needs it): text / table / figure regions per page, cached; its time is reported next to the < 50 ms router decision time
 - [ ] H · S1 question features (wh-type, numeric/visual cue words, length, TF-IDF)
@@ -116,7 +119,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 ### Phase 5 — Evaluation (H9–H11)
 - [ ] E · Paired bootstrap 95% CIs (router vs each baseline)
 - [ ] E/H · Unseen-data test on TAT-DQA
-- [ ] E · Success criteria table (cost ≥ 25% below always-hybrid with ≤ 1 ANLS point loss; S4 gain CI excludes 0; TAT-DQA: more accurate than always-text, cheaper than always-hybrid; decision < 50 ms)
+- [ ] E · Success criteria table — revised after the pilot: the router must beat **always-vision** (more accurate at equal or lower cost), since always-vision alone is within 1.3 ANLS of always-hybrid at half the latency. Original: (cost ≥ 25% below always-hybrid with ≤ 1 ANLS point loss; S4 gain CI excludes 0; TAT-DQA: more accurate than always-text, cheaper than always-hybrid; decision < 50 ms)
 
 ### Phase 6 — Demo & deliverables (H9–H14)
 - [ ] R · Gradio demo: upload page + question → chosen path, answer, latency (`qdu demo`)
@@ -132,4 +135,5 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - ChartQA: relaxed accuracy (5% numeric tolerance) is reported next to ANLS for every dataset; ChartQA results are read from relaxed accuracy. Exact match and token F1 (TAT-QA style, numbers rounded to two decimals; `qdu.evaluation.em_f1`) are reported too and are the TAT-DQA metric; unlike the official script they do not score the predicted scale, because pipelines return one answer string.
 - Images sent to the model are capped at 4 MP (aspect ratio kept; `QDU_MAX_IMAGE_PIXELS`) for both vision and hybrid paths; OCR uses the full-resolution page. Every run records GPU, vLLM version and request settings in `run_info.json`.
 - vLLM runs with prefix caching and the multimodal processor cache **off** (`--no-enable-prefix-caching --mm-processor-cache-gb 0`). The smoke test showed hybrid calls 3x faster than vision calls on the same page despite more input tokens, because the image was cached by the preceding vision call; with caches on, measured latency is not a fair cost.
+- Cost is reported two ways: latency (model + OCR seconds; hardware-specific, what self-hosting pays) and tokens (input + output; API-price proxy, OCR free). Conclusions that hold under only one measure must say so.
 - The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.

@@ -1,5 +1,5 @@
-# Generated benchmark manifests are kept byte-for-byte as written.
-exclude: ^benchmarks/
+# Generated manifests and results are kept byte-for-byte as written.
+exclude: ^(benchmarks|results)/
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

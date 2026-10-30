@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-30T12:37:56",
+  "git_commit": "eb6e1def768e42b0996ae1572a88632dac78755d",
+  "git_dirty": false,
+  "python": "3.13.16",
+  "platform": "Linux-6.6.159+-x86_64-with-glibc2.39",
+  "packages": {
+    "datasets": "5.1.0",
+    "openai": "3.41.0",
+    "pillow": "13.0.0",
+    "pytesseract": "0.3.13"
+  },
+  "text_model": "Qwen/Qwen3.5-4B",
+  "vision_model": "Qwen/Qwen3.5-4B",
+  "pipelines": [
+    "text",
+    "vision",
+    "hybrid"
+  ],
+  "ocr_engine": "tesseract-5.3.4-psm3",
+  "gpu": [
+    {
+      "name": "NVIDIA L4",
+      "memory": "23034 MiB",
+      "driver": "580.82.07",
+      "compute_capability": "8.9"
+    }
+  ],
+  "text_model_config": {
+    "provider": "openai_compat",
+    "base_url": "http://localhost:8000/v1",
+    "model": "Qwen/Qwen3.5-4B",
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "thinking_disabled": true,
+    "max_image_pixels": 4000000,
+    "server_version": {
+      "version": "0.32.0"
+    },
+    "server_models": {
+      "object": "list",
+      "data": [
+        {
+          "id": "Qwen/Qwen3.5-4B",
+          "object": "model",
+          "created": 1793363876,
+          "owned_by": "vllm",
+          "root": "Qwen/Qwen3.5-4B",
+          "parent": null,
+          "max_model_len": 16384,
+          "permission": [
+            {
+              "id": "modelperm-969580f1475c73ac",
+              "object": "model_permission",
+              "created": 1793363876,
+              "allow_create_engine": false,
+              "allow_sampling": true,
+              "allow_logprobs": true,
+              "allow_search_indices": false,
+              "allow_view": true,
+              "allow_fine_tuning": false,
+              "organization": "*",
+              "group": null,
+              "is_blocking": false
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "vision_model_config": {
+    "provider": "openai_compat",
+    "base_url": "http://localhost:8000/v1",
+    "model": "Qwen/Qwen3.5-4B",
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "thinking_disabled": true,
+    "max_image_pixels": 4000000,
+    "server_version": {
+      "version": "0.32.0"
+    },
+    "server_models": {
+      "object": "list",
+      "data": [
+        {
+          "id": "Qwen/Qwen3.5-4B",
+          "object": "model",
+          "created": 1793363876,
+          "owned_by": "vllm",
+          "root": "Qwen/Qwen3.5-4B",
+          "parent": null,
+          "max_model_len": 16384,
+          "permission": [
+            {
+              "id": "modelperm-aae75bbf1e7ca33b",
+              "object": "model_permission",
+              "created": 1793363876,
+              "allow_create_engine": false,
+              "allow_sampling": true,
+              "allow_logprobs": true,
+              "allow_search_indices": false,
+              "allow_view": true,
+              "allow_fine_tuning": false,
+              "organization": "*",
+              "group": null,
+              "is_blocking": false
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "manifest": "benchmarks/pilot_300.csv",
+  "manifest_sha256": "5c478956805b9504efb584b233969650d46d6b34b55640221a27e65e53500830",
+  "questions": 300
+}

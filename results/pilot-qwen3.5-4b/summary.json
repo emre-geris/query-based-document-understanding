@@ -1,0 +1,576 @@
+{
+  "pipelines": [
+    "text",
+    "vision",
+    "hybrid"
+  ],
+  "cost_measure": "latency",
+  "tolerance": 0.0,
+  "incomplete_questions": 0,
+  "overall": {
+    "n_questions": 300,
+    "mean_anls": {
+      "text": 0.3732323670989655,
+      "vision": 0.8411229397312883,
+      "hybrid": 0.8538134544010298
+    },
+    "oracle_anls": 0.8897877908569237,
+    "best_single": "hybrid",
+    "headroom": 0.035974336455893874,
+    "oracle_label_counts": {
+      "text": 52,
+      "vision": 235,
+      "hybrid": 13
+    }
+  },
+  "by_dataset": {
+    "chartqa": {
+      "n_questions": 100,
+      "mean_anls": {
+        "text": 0.20391150954308848,
+        "vision": 0.8432631578947368,
+        "hybrid": 0.8293941102756892
+      },
+      "oracle_anls": 0.8707631578947368,
+      "best_single": "vision",
+      "headroom": 0.02749999999999997,
+      "oracle_label_counts": {
+        "text": 0,
+        "vision": 97,
+        "hybrid": 3
+      }
+    },
+    "docvqa": {
+      "n_questions": 100,
+      "mean_anls": {
+        "text": 0.6049435685809026,
+        "vision": 0.9494760316694985,
+        "hybrid": 0.9488240307051783
+      },
+      "oracle_anls": 0.9853779924538121,
+      "best_single": "vision",
+      "headroom": 0.035901960784313625,
+      "oracle_label_counts": {
+        "text": 39,
+        "vision": 60,
+        "hybrid": 1
+      }
+    },
+    "infographicvqa": {
+      "n_questions": 100,
+      "mean_anls": {
+        "text": 0.31084202317290555,
+        "vision": 0.7306296296296295,
+        "hybrid": 0.7832222222222223
+      },
+      "oracle_anls": 0.8132222222222222,
+      "best_single": "hybrid",
+      "headroom": 0.029999999999999916,
+      "oracle_label_counts": {
+        "text": 13,
+        "vision": 78,
+        "hybrid": 9
+      }
+    }
+  },
+  "by_stratum": {
+    "chartqa/augmented": {
+      "n_questions": 59,
+      "mean_anls": {
+        "text": 0.1639628732849072,
+        "vision": 0.9624293785310735,
+        "hybrid": 0.9363801452784504
+      },
+      "oracle_anls": 0.9793785310734463,
+      "best_single": "vision",
+      "headroom": 0.016949152542372836,
+      "oracle_label_counts": {
+        "text": 0,
+        "vision": 58,
+        "hybrid": 1
+      }
+    },
+    "chartqa/human": {
+      "n_questions": 41,
+      "mean_anls": {
+        "text": 0.2613985714755933,
+        "vision": 0.6717800599058622,
+        "hybrid": 0.6754385964912282
+      },
+      "oracle_anls": 0.7144629867351305,
+      "best_single": "hybrid",
+      "headroom": 0.03902439024390236,
+      "oracle_label_counts": {
+        "text": 0,
+        "vision": 39,
+        "hybrid": 2
+      }
+    },
+    "docvqa/Image/Photo": {
+      "n_questions": 6,
+      "mean_anls": {
+        "text": 0.09722222222222221,
+        "vision": 1.0,
+        "hybrid": 0.8333333333333334
+      },
+      "oracle_anls": 1.0,
+      "best_single": "vision",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 0,
+        "vision": 6,
+        "hybrid": 0
+      }
+    },
+    "docvqa/Yes/No": {
+      "n_questions": 5,
+      "mean_anls": {
+        "text": 0.4,
+        "vision": 0.8,
+        "hybrid": 0.8
+      },
+      "oracle_anls": 1.0,
+      "best_single": "vision",
+      "headroom": 0.19999999999999996,
+      "oracle_label_counts": {
+        "text": 1,
+        "vision": 4,
+        "hybrid": 0
+      }
+    },
+    "docvqa/figure/diagram": {
+      "n_questions": 7,
+      "mean_anls": {
+        "text": 0.39285714285714285,
+        "vision": 0.8571428571428571,
+        "hybrid": 0.8571428571428571
+      },
+      "oracle_anls": 0.8571428571428571,
+      "best_single": "vision",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 2,
+        "vision": 5,
+        "hybrid": 0
+      }
+    },
+    "docvqa/form": {
+      "n_questions": 13,
+      "mean_anls": {
+        "text": 0.8421317244846657,
+        "vision": 1.0,
+        "hybrid": 1.0
+      },
+      "oracle_anls": 1.0,
+      "best_single": "vision",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 6,
+        "vision": 7,
+        "hybrid": 0
+      }
+    },
+    "docvqa/free_text": {
+      "n_questions": 14,
+      "mean_anls": {
+        "text": 0.8916396103896104,
+        "vision": 0.9605217086834734,
+        "hybrid": 0.9955357142857143
+      },
+      "oracle_anls": 0.9955357142857143,
+      "best_single": "hybrid",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 9,
+        "vision": 5,
+        "hybrid": 0
+      }
+    },
+    "docvqa/handwritten": {
+      "n_questions": 8,
+      "mean_anls": {
+        "text": 0.11607142857142858,
+        "vision": 0.9918032786885246,
+        "hybrid": 0.917691256830601
+      },
+      "oracle_anls": 0.9918032786885246,
+      "best_single": "vision",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 0,
+        "vision": 8,
+        "hybrid": 0
+      }
+    },
+    "docvqa/layout": {
+      "n_questions": 24,
+      "mean_anls": {
+        "text": 0.7292530721966206,
+        "vision": 0.9578373015873015,
+        "hybrid": 0.9578373015873015
+      },
+      "oracle_anls": 0.9995039682539683,
+      "best_single": "vision",
+      "headroom": 0.04166666666666674,
+      "oracle_label_counts": {
+        "text": 14,
+        "vision": 10,
+        "hybrid": 0
+      }
+    },
+    "docvqa/others": {
+      "n_questions": 7,
+      "mean_anls": {
+        "text": 0.4199134199134199,
+        "vision": 1.0,
+        "hybrid": 0.9910714285714286
+      },
+      "oracle_anls": 1.0,
+      "best_single": "vision",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 1,
+        "vision": 6,
+        "hybrid": 0
+      }
+    },
+    "docvqa/table/list": {
+      "n_questions": 16,
+      "mean_anls": {
+        "text": 0.6475198412698413,
+        "vision": 0.9111111111111111,
+        "hybrid": 0.9798611111111111
+      },
+      "oracle_anls": 0.9798611111111111,
+      "best_single": "hybrid",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 6,
+        "vision": 9,
+        "hybrid": 1
+      }
+    },
+    "infographicvqa/arithmetic": {
+      "n_questions": 13,
+      "mean_anls": {
+        "text": 0.3076923076923077,
+        "vision": 0.6410256410256411,
+        "hybrid": 0.8589743589743589
+      },
+      "oracle_anls": 0.8589743589743589,
+      "best_single": "hybrid",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 2,
+        "vision": 7,
+        "hybrid": 4
+      }
+    },
+    "infographicvqa/comparison": {
+      "n_questions": 14,
+      "mean_anls": {
+        "text": 0.14285714285714285,
+        "vision": 0.6428571428571429,
+        "hybrid": 0.5714285714285714
+      },
+      "oracle_anls": 0.7142857142857143,
+      "best_single": "vision",
+      "headroom": 0.0714285714285714,
+      "oracle_label_counts": {
+        "text": 1,
+        "vision": 13,
+        "hybrid": 0
+      }
+    },
+    "infographicvqa/counting": {
+      "n_questions": 17,
+      "mean_anls": {
+        "text": 0.23529411764705882,
+        "vision": 0.7058823529411765,
+        "hybrid": 0.7647058823529411
+      },
+      "oracle_anls": 0.7647058823529411,
+      "best_single": "hybrid",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 3,
+        "vision": 13,
+        "hybrid": 1
+      }
+    },
+    "infographicvqa/multi-span": {
+      "n_questions": 12,
+      "mean_anls": {
+        "text": 0.2762087789661319,
+        "vision": 0.5617283950617283,
+        "hybrid": 0.5
+      },
+      "oracle_anls": 0.5833333333333334,
+      "best_single": "vision",
+      "headroom": 0.021604938271605034,
+      "oracle_label_counts": {
+        "text": 3,
+        "vision": 8,
+        "hybrid": 1
+      }
+    },
+    "infographicvqa/question span": {
+      "n_questions": 11,
+      "mean_anls": {
+        "text": 0.6363636363636364,
+        "vision": 0.8181818181818182,
+        "hybrid": 1.0
+      },
+      "oracle_anls": 1.0,
+      "best_single": "hybrid",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 3,
+        "vision": 7,
+        "hybrid": 1
+      }
+    },
+    "infographicvqa/single span": {
+      "n_questions": 33,
+      "mean_anls": {
+        "text": 0.3263544536271809,
+        "vision": 0.8481481481481481,
+        "hybrid": 0.8835016835016835
+      },
+      "oracle_anls": 0.8835016835016835,
+      "best_single": "hybrid",
+      "headroom": 0.0,
+      "oracle_label_counts": {
+        "text": 1,
+        "vision": 30,
+        "hybrid": 2
+      }
+    }
+  },
+  "metrics": [
+    {
+      "dataset": "chartqa",
+      "pipeline": "text",
+      "n": 100,
+      "anls": 0.20391150954308848,
+      "relaxed_accuracy": 0.24,
+      "exact_match": 0.14,
+      "f1": 0.15733333333333333,
+      "model_s": 0.19666290051000943,
+      "ocr_s": 0.27561208125002395,
+      "total_s": 0.47227498176003335,
+      "input_tokens": 197.06,
+      "output_tokens": 4.77
+    },
+    {
+      "dataset": "chartqa",
+      "pipeline": "vision",
+      "n": 100,
+      "anls": 0.8432631578947368,
+      "relaxed_accuracy": 0.87,
+      "exact_match": 0.8,
+      "f1": 0.8066666666666668,
+      "model_s": 0.3152861009999879,
+      "ocr_s": 0.0,
+      "total_s": 0.3152861009999879,
+      "input_tokens": 527.64,
+      "output_tokens": 4.64
+    },
+    {
+      "dataset": "chartqa",
+      "pipeline": "hybrid",
+      "n": 100,
+      "anls": 0.8293941102756892,
+      "relaxed_accuracy": 0.83,
+      "exact_match": 0.78,
+      "f1": 0.7866666666666667,
+      "model_s": 0.3703366933999996,
+      "ocr_s": 0.27561208125002395,
+      "total_s": 0.6459487746500235,
+      "input_tokens": 673.17,
+      "output_tokens": 5.34
+    },
+    {
+      "dataset": "chartqa",
+      "pipeline": "oracle",
+      "n": 100,
+      "anls": 0.8707631578947368,
+      "relaxed_accuracy": 0.88,
+      "exact_match": 0.82,
+      "f1": 0.8266666666666667,
+      "model_s": 0.31603976226998837,
+      "ocr_s": 0.007087538109999514,
+      "total_s": 0.3231273003799879,
+      "input_tokens": 531.14,
+      "output_tokens": 4.64
+    },
+    {
+      "dataset": "docvqa",
+      "pipeline": "text",
+      "n": 100,
+      "anls": 0.6049435685809026,
+      "relaxed_accuracy": 0.49,
+      "exact_match": 0.52,
+      "f1": 0.5893888888888889,
+      "model_s": 0.275939316659983,
+      "ocr_s": 1.4637819250000144,
+      "total_s": 1.7397212416599972,
+      "input_tokens": 478.59,
+      "output_tokens": 5.89
+    },
+    {
+      "dataset": "docvqa",
+      "pipeline": "vision",
+      "n": 100,
+      "anls": 0.9494760316694985,
+      "relaxed_accuracy": 0.89,
+      "exact_match": 0.94,
+      "f1": 0.9688589743589744,
+      "model_s": 2.0190412514100173,
+      "ocr_s": 0.0,
+      "total_s": 2.0190412514100173,
+      "input_tokens": 3514.59,
+      "output_tokens": 5.66
+    },
+    {
+      "dataset": "docvqa",
+      "pipeline": "hybrid",
+      "n": 100,
+      "anls": 0.9488240307051783,
+      "relaxed_accuracy": 0.89,
+      "exact_match": 0.95,
+      "f1": 0.9681666666666666,
+      "model_s": 2.105911905760008,
+      "ocr_s": 1.4637819250000144,
+      "total_s": 3.5696938307600226,
+      "input_tokens": 3946.6,
+      "output_tokens": 5.59
+    },
+    {
+      "dataset": "docvqa",
+      "pipeline": "oracle",
+      "n": 100,
+      "anls": 0.9853779924538121,
+      "relaxed_accuracy": 0.93,
+      "exact_match": 0.98,
+      "f1": 0.987,
+      "model_s": 1.3548159070099883,
+      "ocr_s": 0.49958276512000793,
+      "total_s": 1.854398672129996,
+      "input_tokens": 2303.79,
+      "output_tokens": 5.75
+    },
+    {
+      "dataset": "infographicvqa",
+      "pipeline": "text",
+      "n": 100,
+      "anls": 0.31084202317290555,
+      "relaxed_accuracy": 0.26,
+      "exact_match": 0.26,
+      "f1": 0.30556814449917896,
+      "model_s": 0.266148449049997,
+      "ocr_s": 1.7053392282300137,
+      "total_s": 1.9714876772800107,
+      "input_tokens": 595.84,
+      "output_tokens": 5.13
+    },
+    {
+      "dataset": "infographicvqa",
+      "pipeline": "vision",
+      "n": 100,
+      "anls": 0.7306296296296295,
+      "relaxed_accuracy": 0.71,
+      "exact_match": 0.69,
+      "f1": 0.7209047619047619,
+      "model_s": 1.3386602920300266,
+      "ocr_s": 0.0,
+      "total_s": 1.3386602920300266,
+      "input_tokens": 2252.15,
+      "output_tokens": 4.38
+    },
+    {
+      "dataset": "infographicvqa",
+      "pipeline": "hybrid",
+      "n": 100,
+      "anls": 0.7832222222222223,
+      "relaxed_accuracy": 0.77,
+      "exact_match": 0.75,
+      "f1": 0.7673333333333333,
+      "model_s": 1.4468578362300104,
+      "ocr_s": 1.7053392282300137,
+      "total_s": 3.152197064460024,
+      "input_tokens": 2797.76,
+      "output_tokens": 4.53
+    },
+    {
+      "dataset": "infographicvqa",
+      "pipeline": "oracle",
+      "n": 100,
+      "anls": 0.8132222222222222,
+      "relaxed_accuracy": 0.8,
+      "exact_match": 0.78,
+      "f1": 0.7961904761904762,
+      "model_s": 1.1964008151400276,
+      "ocr_s": 0.29413783771001817,
+      "total_s": 1.4905386528500457,
+      "input_tokens": 2047.5,
+      "output_tokens": 4.26
+    },
+    {
+      "dataset": "ALL",
+      "pipeline": "text",
+      "n": 300,
+      "anls": 0.3732323670989655,
+      "relaxed_accuracy": 0.33,
+      "exact_match": 0.30666666666666664,
+      "f1": 0.3507634555738004,
+      "model_s": 0.2462502220733298,
+      "ocr_s": 1.1482444114933508,
+      "total_s": 1.3944946335666806,
+      "input_tokens": 423.83,
+      "output_tokens": 5.263333333333334
+    },
+    {
+      "dataset": "ALL",
+      "pipeline": "vision",
+      "n": 300,
+      "anls": 0.8411229397312883,
+      "relaxed_accuracy": 0.8233333333333334,
+      "exact_match": 0.81,
+      "f1": 0.8321434676434676,
+      "model_s": 1.2243292148133438,
+      "ocr_s": 0.0,
+      "total_s": 1.2243292148133438,
+      "input_tokens": 2098.1266666666666,
+      "output_tokens": 4.8933333333333335
+    },
+    {
+      "dataset": "ALL",
+      "pipeline": "hybrid",
+      "n": 300,
+      "anls": 0.8538134544010298,
+      "relaxed_accuracy": 0.83,
+      "exact_match": 0.8266666666666667,
+      "f1": 0.8407222222222223,
+      "model_s": 1.3077021451300062,
+      "ocr_s": 1.1482444114933508,
+      "total_s": 2.4559465566233567,
+      "input_tokens": 2472.51,
+      "output_tokens": 5.153333333333333
+    },
+    {
+      "dataset": "ALL",
+      "pipeline": "oracle",
+      "n": 300,
+      "anls": 0.8897877908569237,
+      "relaxed_accuracy": 0.87,
+      "exact_match": 0.86,
+      "f1": 0.8699523809523809,
+      "model_s": 0.9557521614733347,
+      "ocr_s": 0.26693604698000856,
+      "total_s": 1.2226882084533433,
+      "input_tokens": 1627.4766666666667,
+      "output_tokens": 4.883333333333334
+    }
+  ]
+}
