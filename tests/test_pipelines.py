@@ -95,6 +95,11 @@ def test_all_pipelines_share_the_answer_instruction(inp: PipelineInput) -> None:
         ("1\u202f234\u202f567", "1234567"),
         ("2019 2020", "2019 2020"),  # not a thousands group
         ("Top 3 brands", "Top 3 brands"),
+        ("1. courage\n2. clout\n3. astuteness", "courage, clout, astuteness"),
+        ("2. Hong Kong\n1. Singapore", "Singapore, Hong Kong"),  # numbered items in order
+        ("- red\n- blue", "red, blue"),
+        ("1. FC Köln", "1. FC Köln"),  # a single line is not a list
+        ("Answer: 12\nbecause the table says so", "12"),  # not every line is an item
         ("", ""),
     ],
 )

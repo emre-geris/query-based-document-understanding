@@ -65,15 +65,36 @@ def hybrid_prompt(question: str, ocr_text: str) -> str:
 _THOUSANDS_SPACE = re.compile(r"(?<=\d)[ \u00a0\u2009\u202f](?=\d{3}\b)")
 
 
+# "1. courage", "2) clout", "- item", "* item", "• item"
+_LIST_ITEM = re.compile(r"^\s*(?:(\d+)[.)]|[-*•])\s+(.+?)\s*$")
+
+
+def _list_answer(lines: list[str]) -> str | None:
+    """Join a multi-line numbered or bulleted list into "a, b, c" (numbered items in order).
+
+    Multi-span answers (e.g. InfographicVQA) come back as lists; scoring only the first line
+    turned "courage, clout, astuteness" into "1. courage".
+    """
+    if len(lines) < 2:
+        return None
+    matches = [_LIST_ITEM.match(line) for line in lines]
+    if not all(matches):
+        return None
+    items = [(int(m.group(1)) if m.group(1) else i, m.group(2)) for i, m in enumerate(matches)]
+    return ", ".join(text for _, text in sorted(items, key=lambda item: item[0]))
+
+
 def clean_answer(raw: str) -> str:
     """Normalise a raw model output to the answer string that is scored.
 
-    First non-empty line, without an 'Answer:' prefix, wrapping quotes or a final period, and
-    with space thousands separators removed. The last rule matters for the hybrid path: given
-    OCR text such as "140 858" (as printed on Statista charts) the model copies that spacing,
-    which ANLS and relaxed accuracy would otherwise score as wrong.
+    A multi-line list becomes one comma-separated answer; otherwise the first non-empty line
+    is used. Then an 'Answer:' prefix, wrapping quotes and a final period are removed, and
+    space thousands separators are dropped: given OCR text such as "140 858" (as printed on
+    Statista charts) the hybrid path copies that spacing, which ANLS and relaxed accuracy
+    would otherwise score as wrong.
     """
-    line = next((ln for ln in raw.strip().splitlines() if ln.strip()), "")
+    lines = [ln for ln in raw.strip().splitlines() if ln.strip()]
+    line = _list_answer(lines) or (lines[0] if lines else "")
     line = _PREFIX.sub("", line).strip().strip(_QUOTES).strip()
     line = _THOUSANDS_SPACE.sub("", line)
     return line.removesuffix(".").rstrip()
