@@ -25,7 +25,7 @@ Never use `pip install` or edit `uv.lock` by hand.
 ## Layout
 
 - All code lives in the `qdu` package under `src/qdu/`, with tests in `tests/`. There are no standalone scripts; new entry points are `qdu` CLI subcommands in `cli.py`.
-- `notebooks/` holds GPU runbooks (Colab / Kaggle) that only call `qdu` commands; no logic lives in notebooks.
+- `notebooks/` holds GPU runbooks (Colab) that only call `qdu` commands; no logic lives in notebooks.
 - `benchmarks/` holds committed question manifests written by `qdu benchmark sample`; never edit them by hand.
 - `results/<run>/` holds GPU runs worth keeping (predictions, run_info, reports, a README with findings); they cannot be regenerated without a GPU, so they are committed. Reports inside are regenerated with `qdu benchmark report`.
 - `runs/` (scratch benchmark outputs) and `data/` (caches) are gitignored.
@@ -37,7 +37,7 @@ Never use `pip install` or edit `uv.lock` by hand.
 - Keep the answer instruction in `qdu.pipelines.prompts` identical across pipelines; score differences must come from the input modality.
 - ANLS lives in `qdu.evaluation`; reuse it instead of re-implementing normalization.
 - Every benchmark output gets run metadata (`qdu.provenance`): git commit, versions, manifest hash.
-- Report sample size honestly: DocVQA asks several questions per page, so samples take at most one question per document.
+- Report sample size honestly: DocVQA asks several questions per page, so samples take at most one question per document, and analyses over all questions (full labelling) resample by document, not by question.
 - Runs are resumable JSONL (`qdu.runner`); never delete a predictions file to "start clean" after paid API calls — use a new `--name`.
 - The `fake` model is for tests and wiring checks only; its numbers must never be reported.
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`), one logical change per commit.
@@ -83,7 +83,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 ### Phase 1 — Pilot & go/no-go (H3–H4, decision **30 Oct**)
 - [x] R · vLLM server for **Qwen3.5-4B** on a Colab L4 (bf16, thinking off, caches off); starts in ~7 min. Qwen3.5-9B only if the pilot justifies it
 - [x] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, thinking disabled, token usage, timeouts, retries)
-- [x] R/E · GPU runbook `notebooks/gpu_pilot.ipynb` (Colab L4/A100 or Kaggle T4): vLLM + Qwen3.5-4B, data, smoke test, pilot, report
+- [x] R/E · GPU runbook `notebooks/gpu_pilot.ipynb` (Colab L4/A100; a T4 failed): vLLM + Qwen3.5-4B, data, smoke test, run on `MANIFEST`, report
 - [x] H · Dataset registry (`qdu.data.sources`): DocVQA, InfographicVQA, ChartQA on the same `QARecord`; `qdu data download`
 - [x] H · Document-level train / val / test splits (hash-based, `qdu.data.splits`); prerequisite for drawing the pilot from the router-train split
 - [x] H · Download the pilot datasets (`qdu data download`): DocVQA 5,349 q / 1,286 docs, InfographicVQA 2,801 / 500, ChartQA 2,500 / 1,509
@@ -91,15 +91,14 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [x] E · Cost = OCR time + model latency (+ tokens) per path, reported side by side with ANLS (`metrics.csv`)
 - [x] Ortak · Run 3 paths on the pilot (Colab L4, 30 Oct): `results/pilot-qwen3.5-4b/` with README
 - [x] E · Oracle ties broken by measured per-question cost; reports for latency and token cost
-- [ ] R · Record the vLLM launch flags (caches off, max-model-len) in `run_info.json`; today they are only in the notebook
-- [ ] E · Re-run vision/hybrid on the 27 pilot infographics above 4 MP with a higher image cap, to separate the hybrid gain from the downscaling effect
-- [ ] Ortak · Go/no-go (team + advisor). Pilot evidence: oracle +4.9 ANLS over always-vision at equal latency, 95% CI [+2.7, +7.3]; +3.4 over always-hybrid [+1.7, +5.3]; vision and hybrid statistically tied. Only 34/300 questions are won by a single path (vision 18, hybrid 13, text 3), so much of the value is cost saving on easy questions. Recommendation: **go**, judged against always-vision
+- [x] E · Pilot audit (bootstrap CIs, single-path wins, image-size effect); fixes before the full run: oracle by each dataset's primary metric (`qdu.evaluation.primary`), list answers joined, image cap = model limit, vLLM flags recorded (`QDU_SERVER_ARGS`), `sample --all-questions`
+- [ ] Ortak · Go/no-go (team + advisor). Pilot evidence (primary metric): oracle +4.3 over always-vision at equal latency, 95% CI [+2.2, +6.5]; +2.6 over always-hybrid [+1.0, +4.4]; vision and hybrid statistically tied (+1.7 [-0.6, +4.1]). Only 20/300 questions have a single best path (hybrid 10, vision 7, text 3), so much of the value is cost saving on easy questions; ChartQA has almost no accuracy headroom (+1.0). Recommendation: **go**, judged against always-vision
 
 ### Phase 2 — Data & labels (H4–H7)
 - [x] H · Download TAT-DQA test files (`tatdqa_docs_test.zip`, `tatdqa_dataset_test_gold.json`) into the HF cache
 - [x] H · TAT-DQA loader (`qdu.data.tatdqa`): each question mapped to its evidence page from `block_mapping`; cross-page questions skipped; router split fixed to `test`
-- [ ] R · Batch labelling: every train/val question × 3 paths, resumable, cost logged
-- [ ] E · Label table: per question and path → ANLS, cost; oracle label at chosen tolerance
+- [ ] R · Batch labelling: every question of DocVQA, InfographicVQA, ChartQA (all splits: test labels are needed to score baselines) and TAT-DQA × 3 paths on a Colab L4; manifests from `qdu benchmark sample --all-questions --split all`, new `--name` per run, resumable, cost logged. Pilot rate ≈ 26 calls/min at 4 MP, so ~12k questions ≈ 36k calls ≈ 25 h of L4 or more with the model-native image cap; start with a smoke test on the largest pages
+- [ ] E · Label table: per question and path → primary score, cost; oracle label at chosen tolerance
 
 ### Phase 3 — Signals (H5–H7)
 - [ ] H · Compare Tesseract vs PP-OCRv5 on the 300 pilot pages (answer coverage in OCR text, time); pilot text ANLS is low partly because of OCR quality
@@ -119,9 +118,9 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [ ] E · `qdu router train|evaluate` CLI; router artefact versioned with its training manifest hash
 
 ### Phase 5 — Evaluation (H9–H11)
-- [ ] E · Paired bootstrap 95% CIs (router vs each baseline)
+- [ ] E · Paired bootstrap 95% CIs (router vs each baseline), resampling documents, since full labelling has several questions per document
 - [ ] E/H · Unseen-data test on TAT-DQA
-- [ ] E · Success criteria table — revised after the pilot: the router must beat **always-vision** (more accurate at equal or lower cost), since always-vision alone is within 1.5 ANLS of always-hybrid at half the latency. Original: (cost ≥ 25% below always-hybrid with ≤ 1 ANLS point loss; S4 gain CI excludes 0; TAT-DQA: more accurate than always-text, cheaper than always-hybrid; decision < 50 ms)
+- [ ] E · Success criteria table — revised after the pilot: the router must beat **always-vision** (more accurate at equal or lower cost), since always-vision is statistically tied with always-hybrid (pilot: -1.7 points, CI includes 0) at half the latency. Original: (cost ≥ 25% below always-hybrid with ≤ 1 ANLS point loss; S4 gain CI excludes 0; TAT-DQA: more accurate than always-text, cheaper than always-hybrid; decision < 50 ms)
 
 ### Phase 6 — Demo & deliverables (H9–H14)
 - [ ] R · Gradio demo: upload page + question → chosen path, answer, latency (`qdu demo`)
@@ -130,13 +129,13 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 
 ### Decisions
 - Same model serves all three paths; the text path sends no image. Keeps differences attributable to input modality.
-- Samples take at most one question per document; splits are by document.
+- Splits are by document. Samples (pilot) take at most one question per document; full labelling takes every question and resamples by document for confidence intervals.
 - Use each dataset's labelled evaluation split (DocVQA/InfographicVQA validation, ChartQA test) because official training splits are standard VLM training data.
-- Model: **Qwen3.5-4B** instead of the presentation's Qwen2.5-VL (Oct 2026). Newer (Mar 2026), natively multimodal, fits one 16 GB T4, stronger on OCR (OCRBench 85.0). Tell the advisor; cite the Qwen3.5 model card instead of the Qwen2.5-VL report.
+- Model: **Qwen3.5-4B** instead of the presentation's Qwen2.5-VL (Oct 2026). Newer (Mar 2026), natively multimodal, runs on one 24 GB L4 in bf16, stronger on OCR (OCRBench 85.0). Tell the advisor; cite the Qwen3.5 model card instead of the Qwen2.5-VL report.
 - Tools: PP-DocLayout (PaddleOCR 3.x) instead of DocLayout-YOLO for layout; PP-OCRv5 as the stronger OCR backend next to Tesseract (Oct 2026).
-- ChartQA: relaxed accuracy (5% numeric tolerance) is reported next to ANLS for every dataset; ChartQA results are read from relaxed accuracy. Exact match and token F1 (TAT-QA style, numbers rounded to two decimals; `qdu.evaluation.em_f1`) are reported too and are the TAT-DQA metric; unlike the official script they do not score the predicted scale, because pipelines return one answer string.
-- Images sent to the model are capped at 4 MP (aspect ratio kept; `QDU_MAX_IMAGE_PIXELS`) for both vision and hybrid paths; OCR uses the full-resolution page. Every run records GPU, vLLM version and request settings in `run_info.json`.
+- Each dataset is judged by its conventional metric (`qdu.evaluation.primary`): ANLS for DocVQA and InfographicVQA, relaxed accuracy (5% numeric tolerance, exact match for text) for ChartQA, F1 for TAT-DQA. Oracle labels use the same metric. ANLS, relaxed accuracy, EM and F1 are still reported for every dataset. Exact match and token F1 (TAT-QA style, numbers rounded to two decimals; `qdu.evaluation.em_f1`) are reported too and are the TAT-DQA metric; unlike the official script they do not score the predicted scale, because pipelines return one answer string.
+- Images sent to the model are capped at Qwen3.5's own processor limit, 16,777,216 pixels (aspect ratio kept; `QDU_MAX_IMAGE_PIXELS`), for both vision and hybrid paths; OCR uses the full-resolution page. The pilot used 4 MP, which downscaled a quarter of DocVQA/InfographicVQA pages and may have favoured hybrid. The server needs `--max-model-len 32768`. Every run records GPU, vLLM version, launch flags (`QDU_SERVER_ARGS`) and request settings in `run_info.json`.
 - vLLM runs with prefix caching and the multimodal processor cache **off** (`--no-enable-prefix-caching --mm-processor-cache-gb 0`). The smoke test showed hybrid calls 3x faster than vision calls on the same page despite more input tokens, because the image was cached by the preceding vision call; with caches on, measured latency is not a fair cost.
 - Cost is reported two ways: latency (model + OCR seconds; hardware-specific, what self-hosting pays) and tokens (input + output; API-price proxy, OCR free). Conclusions that hold under only one measure must say so.
-- Answers are normalised by `clean_answer` for every path (prefixes, quotes, final period, space thousands separators). After changing it, re-derive finished runs with `qdu benchmark rescore` instead of re-running the GPU.
+- Answers are normalised by `clean_answer` for every path (multi-line lists joined with commas, prefixes, quotes, final period, space thousands separators). After changing it, re-derive finished runs with `qdu benchmark rescore` instead of re-running the GPU.
 - The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.
