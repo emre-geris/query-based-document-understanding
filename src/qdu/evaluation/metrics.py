@@ -11,6 +11,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from qdu.evaluation.em_f1 import exact_match, token_f1
 from qdu.evaluation.relaxed import relaxed_match
 
 
@@ -21,6 +22,8 @@ class MetricRow:
     n: int
     anls: float
     relaxed_accuracy: float
+    exact_match: float
+    f1: float
     model_s: float
     ocr_s: float
     total_s: float
@@ -52,6 +55,8 @@ def _row(dataset: str, pipeline: str, rows: list[dict[str, Any]]) -> MetricRow:
         relaxed_accuracy=_mean(
             [float(relaxed_match(r["prediction"] or "", r["answers"])) for r in rows]
         ),
+        exact_match=_mean([float(exact_match(r["prediction"] or "", r["answers"])) for r in rows]),
+        f1=_mean([token_f1(r["prediction"] or "", r["answers"]) for r in rows]),
         model_s=_mean(model),
         ocr_s=_mean(ocr),
         total_s=_mean([m + o for m, o in zip(model, ocr, strict=True)]),
