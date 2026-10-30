@@ -90,6 +90,11 @@ def test_all_pipelines_share_the_answer_instruction(inp: PipelineInput) -> None:
         ("\n\n  0.28\nbecause the table says so", "0.28"),
         ("Final answer - ITC Limited", "ITC Limited"),
         ("12.", "12"),
+        ("140 858", "140858"),
+        ("1 413.68", "1413.68"),
+        ("1\u202f234\u202f567", "1234567"),
+        ("2019 2020", "2019 2020"),  # not a thousands group
+        ("Top 3 brands", "Top 3 brands"),
         ("", ""),
     ],
 )

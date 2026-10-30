@@ -153,6 +153,54 @@ def run(
     return run_pipelines(records, images.get, built, run_dir / "predictions.jsonl", on_row=on_row)
 
 
+@dataclass(frozen=True)
+class RescoreStats:
+    rows: int
+    changed: int
+    anls_before: float
+    anls_after: float
+
+
+def rescore(run_dir: Path) -> RescoreStats:
+    """Re-derive every prediction from its stored ``raw_output`` with the current
+    :func:`qdu.pipelines.prompts.clean_answer` and recompute ANLS, without calling a model.
+
+    Rewrites ``predictions.jsonl`` in place (the committed original stays in git history) and
+    records what was done in ``rescore_info.json``. Rows that failed are left untouched.
+    """
+    from qdu.evaluation.anls import anls_score
+    from qdu.pipelines.prompts import clean_answer
+
+    path = run_dir / "predictions.jsonl"
+    rows = list(read_predictions(path))
+    changed, before, after = 0, [], []
+    for row in rows:
+        if row.get("error") is not None or row.get("raw_output") is None:
+            continue
+        before.append(row["anls"])
+        prediction = clean_answer(row["raw_output"])
+        if prediction != row["prediction"]:
+            changed += 1
+            row["prediction"] = prediction
+            row["anls"] = anls_score(prediction, row["answers"])
+        after.append(row["anls"])
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    stats = RescoreStats(
+        rows=len(after),
+        changed=changed,
+        anls_before=sum(before) / len(before) if before else 0.0,
+        anls_after=sum(after) / len(after) if after else 0.0,
+    )
+    info = run_metadata(reason="re-derived predictions from raw_output", **asdict(stats))
+    (run_dir / "rescore_info.json").write_text(
+        json.dumps(info, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    return stats
+
+
 def _group_dict(g: GroupSummary) -> dict[str, Any]:
     return {
         "n_questions": g.n_questions,

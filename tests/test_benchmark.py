@@ -111,3 +111,47 @@ def test_run_and_report(tmp_path: Path, fake_docvqa) -> None:
     ):
         assert (run_dir / name).exists()
     assert "ALL" in benchmark.format_summary(summary)
+
+
+def test_rescore_rederives_answers_from_raw_output(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    rows = [
+        {
+            "question_id": "chartqa/1",
+            "pipeline": "hybrid",
+            "answers": ["140858"],
+            "raw_output": "140 858",
+            "prediction": "140 858",
+            "anls": 0.0,
+            "error": None,
+        },
+        {
+            "question_id": "chartqa/1",
+            "pipeline": "vision",
+            "answers": ["140858"],
+            "raw_output": "140858",
+            "prediction": "140858",
+            "anls": 1.0,
+            "error": None,
+        },
+        {
+            "question_id": "chartqa/2",
+            "pipeline": "text",
+            "answers": ["x"],
+            "raw_output": None,
+            "prediction": None,
+            "anls": None,
+            "error": "Timeout",
+        },
+    ]
+    (run_dir / "predictions.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
+    )
+    stats = benchmark.rescore(run_dir)
+    assert (stats.rows, stats.changed) == (2, 1)
+    assert stats.anls_before == 0.5 and stats.anls_after == 1.0
+    saved = [json.loads(line) for line in (run_dir / "predictions.jsonl").read_text().splitlines()]
+    assert saved[0]["prediction"] == "140858" and saved[0]["anls"] == 1.0
+    assert saved[2]["error"] == "Timeout"  # failed rows untouched
+    assert (run_dir / "rescore_info.json").exists()

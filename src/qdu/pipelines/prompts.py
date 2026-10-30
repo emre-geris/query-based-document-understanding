@@ -60,8 +60,20 @@ def hybrid_prompt(question: str, ocr_text: str) -> str:
     )
 
 
+# A space (or no-break / thin space) between a digit and a following group of exactly three
+# digits is a thousands separator: "140 858" -> "140858", "1 413.68" -> "1413.68".
+_THOUSANDS_SPACE = re.compile(r"(?<=\d)[ \u00a0\u2009\u202f](?=\d{3}\b)")
+
+
 def clean_answer(raw: str) -> str:
-    """First non-empty line, without an 'Answer:' prefix, wrapping quotes or a final period."""
+    """Normalise a raw model output to the answer string that is scored.
+
+    First non-empty line, without an 'Answer:' prefix, wrapping quotes or a final period, and
+    with space thousands separators removed. The last rule matters for the hybrid path: given
+    OCR text such as "140 858" (as printed on Statista charts) the model copies that spacing,
+    which ANLS and relaxed accuracy would otherwise score as wrong.
+    """
     line = next((ln for ln in raw.strip().splitlines() if ln.strip()), "")
     line = _PREFIX.sub("", line).strip().strip(_QUOTES).strip()
+    line = _THOUSANDS_SPACE.sub("", line)
     return line.removesuffix(".").rstrip()

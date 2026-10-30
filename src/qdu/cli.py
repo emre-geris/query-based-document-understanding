@@ -122,6 +122,16 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rescore(args: argparse.Namespace) -> int:
+    stats = benchmark.rescore(args.run_dir)
+    print(
+        f"{stats.rows} predictions re-derived from raw_output, {stats.changed} changed; "
+        f"mean ANLS {stats.anls_before:.4f} -> {stats.anls_after:.4f}"
+    )
+    print("Run `qdu benchmark report` again to refresh the reports.")
+    return 0
+
+
 def cmd_ocr_compare(args: argparse.Namespace) -> int:
     from qdu.data import ImageStore, read_manifest
     from qdu.ocr import create_ocr
@@ -216,6 +226,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     rep = bench_sub.add_parser("report", help="summarize a run")
     rep.add_argument("run_dir", type=Path)
+    resc = bench_sub.add_parser(
+        "rescore", help="re-derive answers from raw model output with the current cleaning"
+    )
+    resc.add_argument("run_dir", type=Path)
+    resc.set_defaults(func=cmd_rescore)
+
     rep.add_argument("--tolerance", type=float, default=0.0, help="ANLS tie tolerance")
     rep.add_argument(
         "--cost",
