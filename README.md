@@ -34,7 +34,7 @@ flowchart LR
 | Text, vision and hybrid pipelines | done (model-provider independent) |
 | OCR (Tesseract, cached) | done |
 | Benchmark: DocVQA sample, ANLS, cost, routing oracle | done |
-| Model | Qwen3.5-4B via vLLM (provider in progress; a fake model is used for tests) |
+| Model | Qwen3.5-4B via vLLM, `openai:<model>` provider (`fake` for tests) |
 | Router | next: trained on the routing oracle's labels |
 
 ## Repository layout
@@ -86,6 +86,10 @@ uv run qdu benchmark sample                                        # pilot: 100 
 uv run qdu benchmark run --text-model <spec> --vision-model <spec> # resumable
 uv run qdu benchmark report runs/<run-name>                        # ANLS per pipeline/type, oracle
 ```
+
+### Running on a GPU (Colab / Kaggle)
+
+Open `notebooks/gpu_pilot.ipynb` in Google Colab (runtime **L4** or **A100**) or Kaggle (**GPU T4 x2**, internet on) and run the cells top to bottom. It serves Qwen3.5-4B with vLLM on the same machine, runs the pilot with `--text-model openai:Qwen/Qwen3.5-4B --vision-model openai:Qwen/Qwen3.5-4B`, and zips the run for download. The `openai:<model>` provider reads `QDU_OPENAI_BASE_URL` (default `http://localhost:8000/v1`).
 
 `uv run qdu --help` lists all options. Until a provider is added, `fake` is the only model
 spec; its answers are meaningless and only exercise the wiring.

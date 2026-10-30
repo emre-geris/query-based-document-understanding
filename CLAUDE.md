@@ -25,6 +25,7 @@ Never use `pip install` or edit `uv.lock` by hand.
 ## Layout
 
 - All code lives in the `qdu` package under `src/qdu/`, with tests in `tests/`. There are no standalone scripts; new entry points are `qdu` CLI subcommands in `cli.py`.
+- `notebooks/` holds GPU runbooks (Colab / Kaggle) that only call `qdu` commands; no logic lives in notebooks.
 - `benchmarks/` holds committed question manifests written by `qdu benchmark sample`; never edit them by hand.
 - `runs/` (benchmark outputs) and `data/` (caches) are gitignored.
 
@@ -79,12 +80,13 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 
 ### Phase 1 — Pilot & go/no-go (H3–H4, decision **30 Oct**)
 - [ ] R · vLLM server for **Qwen3.5-4B** on Kaggle T4 (thinking off, fp16) + setup notes in README; Qwen3.5-9B (2×T4 tensor-parallel or quantized) only if the pilot justifies it
-- [ ] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, thinking disabled, token usage, timeouts, retries)
+- [x] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, thinking disabled, token usage, timeouts, retries)
+- [x] R/E · GPU runbook `notebooks/gpu_pilot.ipynb` (Colab L4/A100 or Kaggle T4): vLLM + Qwen3.5-4B, data, smoke test, pilot, report
 - [x] H · Dataset registry (`qdu.data.sources`): DocVQA, InfographicVQA, ChartQA on the same `QARecord`; `qdu data download`
 - [x] H · Document-level train / val / test splits (hash-based, `qdu.data.splits`); prerequisite for drawing the pilot from the router-train split
 - [x] H · Download the pilot datasets (`qdu data download`): DocVQA 5,349 q / 1,286 docs, InfographicVQA 2,801 / 500, ChartQA 2,500 / 1,509
 - [x] H · Pilot manifest: 300 questions (100 per dataset, one per document, router-train split) → `benchmarks/pilot_300.csv`
-- [ ] E · Cost = OCR time + model latency (+ tokens) per path, reported side by side with ANLS
+- [x] E · Cost = OCR time + model latency (+ tokens) per path, reported side by side with ANLS (`metrics.csv`)
 - [ ] Ortak · Run 3 paths on the pilot, `qdu benchmark report`, per-dataset breakdown
 - [ ] Ortak · Go/no-go: oracle headroom over best single path and over "always hybrid" at equal cost. No usable gap → pivot to a measurement study on the same data
 
@@ -126,5 +128,5 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - Use each dataset's labelled evaluation split (DocVQA/InfographicVQA validation, ChartQA test) because official training splits are standard VLM training data.
 - Model: **Qwen3.5-4B** instead of the presentation's Qwen2.5-VL (Oct 2026). Newer (Mar 2026), natively multimodal, fits one 16 GB T4, stronger on OCR (OCRBench 85.0). Tell the advisor; cite the Qwen3.5 model card instead of the Qwen2.5-VL report.
 - Tools: PP-DocLayout (PaddleOCR 3.x) instead of DocLayout-YOLO for layout; PP-OCRv5 as the stronger OCR backend next to Tesseract (Oct 2026).
-- Open: ChartQA is conventionally scored with relaxed accuracy (5% numeric tolerance), not ANLS. Decide before the pilot report whether to add it next to ANLS for ChartQA.
+- ChartQA: relaxed accuracy (5% numeric tolerance) is reported next to ANLS for every dataset; ChartQA results are read from relaxed accuracy. TAT-DQA's official EM/F1 with scale is still to be added (Phase 5).
 - The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.
