@@ -35,6 +35,8 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+# GPU runbooks are mostly shell commands; they hold no project logic.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = [
