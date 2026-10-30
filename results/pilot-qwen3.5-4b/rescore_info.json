@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-30T18:30:08",
-  "git_commit": "b844f146f420243e66352f7866a5b0ae049beae7",
-  "git_dirty": true,
+  "date": "2026-10-30T18:47:57",
+  "git_commit": "008f9e700ce24dae9544543cf4f0a9883aee15d9",
+  "git_dirty": false,
   "python": "3.13.6",
   "platform": "Windows-11-10.0.26300-SP0",
   "packages": {
@@ -12,7 +12,7 @@
   },
   "reason": "re-derived predictions from raw_output",
   "rows": 900,
-  "changed": 9,
-  "anls_before": 0.6893895870770945,
-  "anls_after": 0.6901633966009042
+  "changed": 3,
+  "anls_before": 0.6901633966009042,
+  "anls_after": 0.6934967299342375
 }

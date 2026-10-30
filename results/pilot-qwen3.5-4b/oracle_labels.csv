@@ -17,7 +17,7 @@ chartqa/test-00561,vision
 chartqa/test-00569,vision
 chartqa/test-00604,vision
 chartqa/test-00606,vision
-chartqa/test-00613,hybrid
+chartqa/test-00613,vision
 chartqa/test-00655,hybrid
 chartqa/test-00692,vision
 chartqa/test-00706,vision
@@ -87,7 +87,7 @@ chartqa/test-02205,vision
 chartqa/test-02225,vision
 chartqa/test-02231,vision
 chartqa/test-02232,vision
-chartqa/test-02251,hybrid
+chartqa/test-02251,vision
 chartqa/test-02281,vision
 chartqa/test-02297,vision
 chartqa/test-02316,vision
@@ -246,7 +246,7 @@ infographicvqa/93829,vision
 infographicvqa/93893,vision
 infographicvqa/94007,vision
 infographicvqa/94017,vision
-infographicvqa/94031,hybrid
+infographicvqa/94031,text
 infographicvqa/94099,vision
 infographicvqa/94141,vision
 infographicvqa/94146,text
@@ -266,7 +266,7 @@ infographicvqa/95201,vision
 infographicvqa/95270,vision
 infographicvqa/95310,text
 infographicvqa/95311,vision
-infographicvqa/95369,text
+infographicvqa/95369,vision
 infographicvqa/95534,vision
 infographicvqa/95689,vision
 infographicvqa/95695,vision
