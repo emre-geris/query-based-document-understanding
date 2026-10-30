@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from qdu.ocr.base import OcrResult
+from qdu.ocr.base import OcrResult, cache_file
 
 if TYPE_CHECKING:
     from PIL.Image import Image
@@ -45,7 +45,7 @@ class PaddleOcr:
         self.cache_dir = cache_dir / f"paddle-{model}" if cache_dir else None
 
     def _cache_path(self, key: str) -> Path | None:
-        return self.cache_dir / f"{key}.json" if self.cache_dir else None
+        return cache_file(self.cache_dir, key) if self.cache_dir else None
 
     def extract(self, image: "Image", key: str) -> OcrResult:
         path = self._cache_path(key)

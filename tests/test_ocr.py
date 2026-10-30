@@ -37,3 +37,15 @@ def test_second_call_is_served_from_cache(tmp_path: Path, monkeypatch: pytest.Mo
     assert second.text == first.text
     assert second.latency_s == first.latency_s
     assert (tmp_path / "psm6" / "doc1.json").exists()
+
+
+def test_cache_file_is_valid_on_windows(tmp_path) -> None:
+    from qdu.ocr.base import cache_file
+
+    assert cache_file(tmp_path, "docvqa/4662") == tmp_path / "docvqa/4662.json"
+    a = cache_file(tmp_path, "infographicvqa/cities.jpg?format=1500w")
+    b = cache_file(tmp_path, "infographicvqa/cities.jpg*format=1500w")
+    assert a.parent == tmp_path / "infographicvqa"
+    assert "?" not in a.name and a != b
+    a.parent.mkdir(parents=True)
+    a.write_text("{}", encoding="utf-8")  # fails on Windows if the name is invalid
