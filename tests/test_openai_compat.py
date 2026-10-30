@@ -49,3 +49,27 @@ def test_registry_builds_openai_models() -> None:
     model = create_model("openai:Qwen/Qwen3.5-4B")
     assert model.name == "Qwen/Qwen3.5-4B"
     assert model.supports_images
+
+
+def test_large_pages_are_downscaled_keeping_aspect_ratio() -> None:
+    from qdu.models.openai_compat import limit_pixels
+
+    tall = Image.new("RGB", (1000, 8000))  # 8 MP infographic
+    small = limit_pixels(tall, 2_000_000)
+    assert small.size[0] * small.size[1] <= 2_000_000
+    assert abs(small.size[1] / small.size[0] - 8.0) < 0.05
+    page = Image.new("RGB", (800, 1000))
+    assert limit_pixels(page, 2_000_000) is page  # small pages are untouched
+
+
+def test_image_cap_comes_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("QDU_MAX_IMAGE_PIXELS", "123456")
+    assert OpenAICompatModel("m", client=RecordingClient()).max_image_pixels == 123456
+
+
+def test_describe_records_settings_even_without_a_server() -> None:
+    model = OpenAICompatModel("m", base_url="http://127.0.0.1:9/v1", client=RecordingClient())
+    info = model.describe()
+    assert info["thinking_disabled"] is True
+    assert info["max_image_pixels"] == 4_000_000
+    assert info["server_version"] is None  # unreachable server is recorded, not fatal

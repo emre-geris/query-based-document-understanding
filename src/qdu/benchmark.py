@@ -35,7 +35,7 @@ from qdu.evaluation.oracle import (
 from qdu.models.base import LanguageModel
 from qdu.ocr.base import OcrEngine
 from qdu.pipelines import build_pipeline
-from qdu.provenance import file_sha256, run_metadata
+from qdu.provenance import file_sha256, gpu_info, run_metadata
 from qdu.runner import (
     PredictionRow,
     RunStats,
@@ -111,6 +111,11 @@ def build_sample(
     return info
 
 
+def _describe(model: LanguageModel) -> dict[str, Any] | None:
+    describe = getattr(model, "describe", None)
+    return describe() if callable(describe) else None
+
+
 def run(
     run_dir: Path,
     *,
@@ -135,6 +140,9 @@ def run(
         vision_model=vision_model.name,
         pipelines=list(pipelines),
         ocr_engine=ocr.name,
+        gpu=gpu_info(),
+        text_model_config=_describe(text_model),
+        vision_model_config=_describe(vision_model),
         manifest=manifest.as_posix(),
         manifest_sha256=file_sha256(manifest),
         questions=len(records),

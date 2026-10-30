@@ -129,4 +129,5 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - Model: **Qwen3.5-4B** instead of the presentation's Qwen2.5-VL (Oct 2026). Newer (Mar 2026), natively multimodal, fits one 16 GB T4, stronger on OCR (OCRBench 85.0). Tell the advisor; cite the Qwen3.5 model card instead of the Qwen2.5-VL report.
 - Tools: PP-DocLayout (PaddleOCR 3.x) instead of DocLayout-YOLO for layout; PP-OCRv5 as the stronger OCR backend next to Tesseract (Oct 2026).
 - ChartQA: relaxed accuracy (5% numeric tolerance) is reported next to ANLS for every dataset; ChartQA results are read from relaxed accuracy. TAT-DQA's official EM/F1 with scale is still to be added (Phase 5).
+- Images sent to the model are capped at 4 MP (aspect ratio kept; `QDU_MAX_IMAGE_PIXELS`) for both vision and hybrid paths; OCR uses the full-resolution page. Every run records GPU, vLLM version and request settings in `run_info.json`.
 - The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.
