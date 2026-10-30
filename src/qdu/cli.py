@@ -108,12 +108,16 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    by_stratum, by_dataset = benchmark.report(args.run_dir, tolerance=args.tolerance)
-    print(benchmark.format_summary(by_dataset, "dataset"))
-    print()
-    print(benchmark.format_summary(by_stratum))
+    result = benchmark.report(args.run_dir, tolerance=args.tolerance)
+    print("Quality and cost per question")
+    print(benchmark.format_metrics(result.metrics))
+    print("\nANLS and oracle per dataset")
+    print(benchmark.format_summary(result.by_dataset, "dataset"))
+    print("\nANLS and oracle per question type")
+    print(benchmark.format_summary(result.by_stratum))
     print(
-        f"\nWrote summary.json, by_dataset.csv, by_stratum.csv, oracle_labels.csv to {args.run_dir}"
+        "\nWrote summary.json, metrics.csv, by_dataset.csv, by_stratum.csv, oracle_labels.csv"
+        f" to {args.run_dir}"
     )
     return 0
 

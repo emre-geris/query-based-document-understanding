@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from qdu import benchmark
@@ -76,11 +77,26 @@ def test_run_and_report(tmp_path: Path, fake_docvqa) -> None:
     assert run().skipped == 36  # resumable
     assert json.loads((run_dir / "run_info.json").read_text())["text_model"] == "text-fake"
 
-    summary, by_dataset = benchmark.report(run_dir)
+    result = benchmark.report(run_dir)
+    summary, by_dataset = result.by_stratum, result.by_dataset
     assert set(by_dataset.by_stratum) == {"docvqa"}
+    rows = {(m.dataset, m.pipeline): m for m in result.metrics}
+    assert rows[("ALL", "text")].anls == 1.0
+    assert rows[("ALL", "text")].ocr_s == pytest.approx(
+        0.1
+    )  # PrintedCodeOcr reports 0.1 s per page
+    assert rows[("ALL", "vision")].ocr_s == 0.0
+    assert rows[("ALL", "oracle")].n == 12
+    assert "relaxed" in benchmark.format_metrics(result.metrics)
     assert summary.overall.mean_anls["text"] == 1.0
     assert summary.overall.oracle_anls == 1.0
     assert summary.overall.label_counts == {"text": 12, "vision": 0, "hybrid": 0}
-    for name in ("summary.json", "by_dataset.csv", "by_stratum.csv", "oracle_labels.csv"):
+    for name in (
+        "summary.json",
+        "metrics.csv",
+        "by_dataset.csv",
+        "by_stratum.csv",
+        "oracle_labels.csv",
+    ):
         assert (run_dir / name).exists()
     assert "ALL" in benchmark.format_summary(summary)

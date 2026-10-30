@@ -9,7 +9,7 @@ import csv
 import json
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +24,7 @@ from qdu.data import (
     write_manifest,
 )
 from qdu.data.sampling import assign_stratum
+from qdu.evaluation.metrics import MetricRow, metric_table
 from qdu.evaluation.oracle import (
     DEFAULT_COST_ORDER,
     GroupSummary,
@@ -35,7 +36,13 @@ from qdu.models.base import LanguageModel
 from qdu.ocr.base import OcrEngine
 from qdu.pipelines import build_pipeline
 from qdu.provenance import file_sha256, run_metadata
-from qdu.runner import PredictionRow, RunStats, run_pipelines, scored_predictions
+from qdu.runner import (
+    PredictionRow,
+    RunStats,
+    read_predictions,
+    run_pipelines,
+    scored_predictions,
+)
 
 if TYPE_CHECKING:
     from datasets import Dataset
@@ -171,11 +178,15 @@ def _dataset_of(question_id: str) -> str:
     return question_id.split("/", 1)[0] if "/" in question_id else "unknown"
 
 
-def report(run_dir: Path, *, tolerance: float = 0.0) -> tuple[OracleSummary, OracleSummary]:
-    """Write summary.json, by_dataset.csv, by_stratum.csv and oracle_labels.csv for a run.
+@dataclass
+class Report:
+    by_stratum: OracleSummary
+    by_dataset: OracleSummary
+    metrics: list[MetricRow]
 
-    Returns the per-stratum and the per-dataset summaries.
-    """
+
+def report(run_dir: Path, *, tolerance: float = 0.0) -> Report:
+    """Write summary.json, metrics.csv, by_dataset.csv, by_stratum.csv and oracle_labels.csv."""
     rows = scored_predictions(run_dir / "predictions.jsonl")
     present = {r.pipeline for r in rows}
     pipelines = tuple(p for p in DEFAULT_COST_ORDER if p in present)
@@ -197,6 +208,14 @@ def report(run_dir: Path, *, tolerance: float = 0.0) -> tuple[OracleSummary, Ora
         "by_dataset": {s: _group_dict(g) for s, g in by_dataset.by_stratum.items()},
         "by_stratum": {s: _group_dict(g) for s, g in by_stratum.by_stratum.items()},
     }
+    metrics = metric_table(
+        read_predictions(run_dir / "predictions.jsonl"), pipelines, by_stratum.labels
+    )
+    result["metrics"] = [asdict(m) for m in metrics]
+    with (run_dir / "metrics.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(MetricRow.__dataclass_fields__))
+        w.writeheader()
+        w.writerows(asdict(m) for m in metrics)
     (run_dir / "summary.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     _write_groups(run_dir / "by_dataset.csv", by_dataset, "dataset")
     _write_groups(run_dir / "by_stratum.csv", by_stratum, "stratum")
@@ -205,7 +224,7 @@ def report(run_dir: Path, *, tolerance: float = 0.0) -> tuple[OracleSummary, Ora
         w = csv.writer(f)
         w.writerow(["question_id", "oracle_pipeline"])
         w.writerows(sorted(by_stratum.labels.items()))
-    return by_stratum, by_dataset
+    return Report(by_stratum, by_dataset, metrics)
 
 
 def format_summary(summary: OracleSummary, label: str = "stratum") -> str:
@@ -222,4 +241,20 @@ def format_summary(summary: OracleSummary, label: str = "stratum") -> str:
         lines.append(f"  {name:<{width}}{g.n_questions:>5}{scores}{g.oracle_anls:>9.3f}   {labels}")
     if summary.incomplete_questions:
         lines.append(f"\n  {summary.incomplete_questions} questions skipped (missing a result)")
+    return "\n".join(lines)
+
+
+def format_metrics(metrics: list[MetricRow]) -> str:
+    """Quality and cost per dataset and pipeline; relaxed accuracy matters for ChartQA."""
+    lines = [
+        f"  {'dataset':<16}{'pipeline':<9}{'n':>5}{'ANLS':>8}{'relaxed':>9}"
+        f"{'model s':>9}{'OCR s':>8}{'total s':>9}{'in tok':>9}{'out tok':>9}"
+    ]
+    for m in metrics:
+        tokens_in = f"{m.input_tokens:>9.0f}" if m.input_tokens is not None else f"{'-':>9}"
+        tokens_out = f"{m.output_tokens:>9.1f}" if m.output_tokens is not None else f"{'-':>9}"
+        lines.append(
+            f"  {m.dataset:<16}{m.pipeline:<9}{m.n:>5}{m.anls:>8.3f}{m.relaxed_accuracy:>9.3f}"
+            f"{m.model_s:>9.2f}{m.ocr_s:>8.2f}{m.total_s:>9.2f}{tokens_in}{tokens_out}"
+        )
     return "\n".join(lines)
