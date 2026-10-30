@@ -31,8 +31,8 @@ def test_oracle_label_prefers_cheapest_among_ties() -> None:
 def test_overall_summary() -> None:
     s = summarize(rows(TABLE), ORDER).overall
     assert s.n_questions == 4
-    assert s.mean_anls == pytest.approx({"text": 0.25, "vision": 0.5, "hybrid": 0.675})
-    assert s.oracle_anls == pytest.approx((1.0 + 1.0 + 0.9 + 0.0) / 4)
+    assert s.mean_score == pytest.approx({"text": 0.25, "vision": 0.5, "hybrid": 0.675})
+    assert s.oracle_score == pytest.approx((1.0 + 1.0 + 0.9 + 0.0) / 4)
     assert s.best_single == "hybrid"
     assert s.headroom == pytest.approx(0.725 - 0.675)
     assert s.label_counts == {"text": 2, "vision": 1, "hybrid": 1}
@@ -42,7 +42,7 @@ def test_by_stratum() -> None:
     summary = summarize(rows(TABLE), ORDER)
     assert set(summary.by_stratum) == {"figure", "form"}
     assert summary.by_stratum["form"].best_single == "vision"
-    assert summary.by_stratum["figure"].oracle_anls == pytest.approx(0.45)
+    assert summary.by_stratum["figure"].oracle_score == pytest.approx(0.45)
     assert summary.labels["q3"] == "hybrid"
 
 

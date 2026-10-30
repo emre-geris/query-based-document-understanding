@@ -66,7 +66,7 @@ def test_end_to_end_run_and_analysis(tmp_path: Path) -> None:
     assert q1_text["ocr_latency_s"] == 0.1
 
     summary = summarize(scored_predictions(out), ("text", "vision", "hybrid"))
-    assert summary.overall.oracle_anls == 1.0
+    assert summary.overall.oracle_score == 1.0
     assert summary.labels == {"q1": "text", "q2": "vision"}
 
 

@@ -89,14 +89,14 @@ def test_run_and_report(tmp_path: Path, fake_docvqa) -> None:
     assert rows[("ALL", "vision")].ocr_s == 0.0
     assert rows[("ALL", "oracle")].n == 12
     assert "relaxed" in benchmark.format_metrics(result.metrics)
-    assert summary.overall.mean_anls["text"] == 1.0
-    assert summary.overall.oracle_anls == 1.0
+    assert summary.overall.mean_score["text"] == 1.0
+    assert summary.overall.oracle_score == 1.0
     # Ties are broken by measured latency: the fake VLM takes 0 s, the text path pays 0.1 s of
     # OCR, so questions the vision path also answers are labelled "vision", the rest "text".
     vision_correct = {
         r.question_id
         for r in scored_predictions(run_dir / "predictions.jsonl")
-        if r.pipeline == "vision" and r.anls == 1.0
+        if r.pipeline == "vision" and r.score == 1.0
     }
     assert vision_correct
     assert summary.labels == {

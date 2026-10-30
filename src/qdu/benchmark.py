@@ -204,8 +204,8 @@ def rescore(run_dir: Path) -> RescoreStats:
 def _group_dict(g: GroupSummary) -> dict[str, Any]:
     return {
         "n_questions": g.n_questions,
-        "mean_anls": g.mean_anls,
-        "oracle_anls": g.oracle_anls,
+        "mean_score": g.mean_score,
+        "oracle_score": g.oracle_score,
         "best_single": g.best_single,
         "headroom": g.headroom,
         "oracle_label_counts": g.label_counts,
@@ -222,8 +222,8 @@ def _write_groups(path: Path, summary: OracleSummary, label: str) -> None:
                 [
                     name,
                     g.n_questions,
-                    *(f"{g.mean_anls[p]:.4f}" for p in pipelines),
-                    f"{g.oracle_anls:.4f}",
+                    *(f"{g.mean_score[p]:.4f}" for p in pipelines),
+                    f"{g.oracle_score:.4f}",
                     g.best_single,
                     f"{g.headroom:.4f}",
                 ]
@@ -260,7 +260,7 @@ def report(run_dir: Path, *, tolerance: float = 0.0, cost: str = "latency") -> R
     by_stratum = summarize(rows, pipelines, tolerance=tolerance)
     by_dataset = summarize(
         [
-            ScoredPrediction(r.question_id, _dataset_of(r.question_id), r.pipeline, r.anls, r.cost)
+            ScoredPrediction(r.question_id, _dataset_of(r.question_id), r.pipeline, r.score, r.cost)
             for r in rows
         ],
         pipelines,
@@ -306,9 +306,11 @@ def format_summary(summary: OracleSummary, label: str = "stratum") -> str:
         + f"{'oracle':>9}   labels ({'/'.join(pipelines)})"
     ]
     for name, g in [("ALL", summary.overall), *summary.by_stratum.items()]:
-        scores = "".join(f"{g.mean_anls[p]:>9.3f}" for p in pipelines)
+        scores = "".join(f"{g.mean_score[p]:>9.3f}" for p in pipelines)
         labels = "/".join(str(g.label_counts[p]) for p in pipelines)
-        lines.append(f"  {name:<{width}}{g.n_questions:>5}{scores}{g.oracle_anls:>9.3f}   {labels}")
+        lines.append(
+            f"  {name:<{width}}{g.n_questions:>5}{scores}{g.oracle_score:>9.3f}   {labels}"
+        )
     if summary.incomplete_questions:
         lines.append(f"\n  {summary.incomplete_questions} questions skipped (missing a result)")
     return "\n".join(lines)

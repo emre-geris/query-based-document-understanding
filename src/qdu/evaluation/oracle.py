@@ -1,8 +1,9 @@
 """Routing-oracle analysis.
 
 Given every pipeline's score on every question, the *oracle* picks the best pipeline per
-question. Its mean ANLS is the ceiling any router can reach with these pipelines; the gap to
-the best single pipeline is the most a router can add. The oracle's choice, breaking ties
+question. Its mean score (each dataset's primary metric, see qdu.evaluation.primary) is the
+ceiling any router can reach with these pipelines; the gap to the best single pipeline is the
+most a router can add. The oracle's choice, breaking ties
 towards the cheaper pipeline, is the training label for a learned router.
 
 Ties are broken by each question's **measured** cost (seconds or tokens) when every tied
@@ -24,7 +25,8 @@ class ScoredPrediction:
     question_id: str
     stratum: str
     pipeline: str
-    anls: float
+    score: float
+    """The dataset's primary metric (see qdu.evaluation.primary)."""
     cost: float | None = None
     """Measured cost of this call (seconds or tokens); used to break ties."""
 
@@ -32,18 +34,18 @@ class ScoredPrediction:
 @dataclass
 class GroupSummary:
     n_questions: int
-    mean_anls: dict[str, float]
-    oracle_anls: float
+    mean_score: dict[str, float]
+    oracle_score: float
     label_counts: dict[str, int]
 
     @property
     def best_single(self) -> str:
-        return max(self.mean_anls, key=lambda p: (self.mean_anls[p], p))
+        return max(self.mean_score, key=lambda p: (self.mean_score[p], p))
 
     @property
     def headroom(self) -> float:
         """Oracle minus best single pipeline."""
-        return self.oracle_anls - self.mean_anls[self.best_single]
+        return self.oracle_score - self.mean_score[self.best_single]
 
 
 @dataclass
@@ -99,7 +101,7 @@ def summarize(
     costs: dict[str, dict[str, float | None]] = defaultdict(dict)
     stratum: dict[str, str] = {}
     for r in rows:
-        scores[r.question_id][r.pipeline] = r.anls
+        scores[r.question_id][r.pipeline] = r.score
         costs[r.question_id][r.pipeline] = r.cost
         stratum[r.question_id] = r.stratum
     names = tuple(pipelines) if pipelines else tuple(sorted({r.pipeline for r in rows}))

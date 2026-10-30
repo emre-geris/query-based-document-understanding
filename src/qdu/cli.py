@@ -111,9 +111,9 @@ def cmd_report(args: argparse.Namespace) -> int:
     result = benchmark.report(args.run_dir, tolerance=args.tolerance, cost=args.cost)
     print(f"Quality and cost per question (oracle ties broken by {args.cost})")
     print(benchmark.format_metrics(result.metrics))
-    print("\nANLS and oracle per dataset")
+    print("\nPrimary score and oracle per dataset (ANLS; ChartQA: relaxed accuracy)")
     print(benchmark.format_summary(result.by_dataset, "dataset"))
-    print("\nANLS and oracle per question type")
+    print("\nPrimary score and oracle per question type")
     print(benchmark.format_summary(result.by_stratum))
     print(
         "\nWrote summary.json, metrics.csv, by_dataset.csv, by_stratum.csv, oracle_labels.csv"
@@ -232,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
     resc.add_argument("run_dir", type=Path)
     resc.set_defaults(func=cmd_rescore)
 
-    rep.add_argument("--tolerance", type=float, default=0.0, help="ANLS tie tolerance")
+    rep.add_argument("--tolerance", type=float, default=0.0, help="score tie tolerance")
     rep.add_argument(
         "--cost",
         choices=("latency", "tokens"),

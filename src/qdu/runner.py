@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from qdu.data.records import QARecord
 from qdu.evaluation.anls import anls_score
 from qdu.evaluation.oracle import ScoredPrediction
+from qdu.evaluation.primary import primary_score
 from qdu.pipelines.base import Pipeline, PipelineInput
 
 if TYPE_CHECKING:
@@ -78,7 +79,12 @@ def call_cost(row: dict[str, Any], measure: str = "latency") -> float | None:
 
 
 def scored_predictions(path: Path, cost: str = "latency") -> list[ScoredPrediction]:
-    """Latest successful row per (question, pipeline), ready for the oracle analysis."""
+    """Latest successful row per (question, pipeline), ready for the oracle analysis.
+
+    Each row is scored with its dataset's primary metric (ANLS, or relaxed accuracy for
+    ChartQA), taken from the question id prefix, so oracle labels follow the convention of
+    each benchmark.
+    """
     latest: dict[tuple[str, str], ScoredPrediction] = {}
     for row in read_predictions(path):
         if row["error"] is None:
@@ -87,7 +93,9 @@ def scored_predictions(path: Path, cost: str = "latency") -> list[ScoredPredicti
                 row["question_id"],
                 row["stratum"],
                 row["pipeline"],
-                row["anls"],
+                primary_score(
+                    row["question_id"].split("/", 1)[0], row["prediction"], row["answers"]
+                ),
                 call_cost(row, cost),
             )
     return list(latest.values())
