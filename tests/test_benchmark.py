@@ -31,6 +31,17 @@ def guesses_every_third(prompt: str, n_images: int) -> str:
     return f"CODE{i}" if i % 3 == 0 else "no idea"
 
 
+def test_build_sample_can_take_every_question(tmp_path: Path, fake_docvqa) -> None:
+    manifest = tmp_path / "all.csv"
+    info = benchmark.build_sample(
+        manifest, datasets=["docvqa"], per_dataset=None, split=None, loaded={"docvqa": fake_docvqa}
+    )
+    records = read_manifest(manifest)
+    assert len(records) == len(fake_docvqa) == info["questions"]
+    assert info["one_per_document"] is False
+    assert all(r.stratum.startswith("docvqa/") for r in records)
+
+
 def test_build_sample_writes_manifest_and_info(tmp_path: Path, fake_docvqa) -> None:
     manifest = tmp_path / "sample.csv"
     info = benchmark.build_sample(

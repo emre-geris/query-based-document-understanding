@@ -61,7 +61,7 @@ def build_sample(
     manifest: Path = DEFAULT_MANIFEST,
     *,
     datasets: Sequence[str] = PILOT_DATASETS,
-    per_dataset: int = 100,
+    per_dataset: int | None = 100,
     split: str | None = "train",
     min_per_stratum: int = 5,
     seed: int = 42,
@@ -72,6 +72,10 @@ def build_sample(
     ``split`` restricts sampling to one router split. The pilot draws from ``train`` so its
     labels can be reused for router training without touching validation or test documents.
     Strata are ``<dataset>/<rarest question-type label>``.
+
+    ``per_dataset=None`` takes every question in the split instead (several per document), as
+    needed to label all questions for router training and evaluation; analyses on such a
+    manifest must resample by document, not by question.
     """
     sample = []
     per_source: dict[str, Any] = {}
@@ -80,7 +84,15 @@ def build_sample(
         records = [r for r in iter_source_records(name, dataset) if split in (None, r.split)]
         counts = label_counts(records)
         population = Counter(assign_stratum(r.question_types, counts) for r in records)
-        chosen = stratified_sample(records, per_dataset, min_per_stratum=min_per_stratum, seed=seed)
+        if per_dataset is None:
+            chosen = [
+                replace(r, stratum=assign_stratum(r.question_types, counts))
+                for r in sorted(records, key=lambda r: r.question_id)
+            ]
+        else:
+            chosen = stratified_sample(
+                records, per_dataset, min_per_stratum=min_per_stratum, seed=seed
+            )
         sample += [replace(r, stratum=f"{name}/{r.stratum}") for r in chosen]
 
         spec = get_source(name)
@@ -100,7 +112,7 @@ def build_sample(
         per_dataset=per_dataset,
         min_per_stratum=min_per_stratum,
         seed=seed,
-        one_per_document=True,
+        one_per_document=per_dataset is not None,
         questions=len(sample),
         sources=per_source,
         manifest_sha256=file_sha256(manifest),

@@ -60,11 +60,13 @@ def cmd_data_download(args: argparse.Namespace) -> int:
 def cmd_sample(args: argparse.Namespace) -> int:
     names = _names(args.datasets)
     split = None if args.split == "all" else args.split
-    print(f"Sampling {args.per_dataset} questions per dataset from {', '.join(names)}...")
+    per_dataset = None if args.all_questions else args.per_dataset
+    amount = "all" if per_dataset is None else per_dataset
+    print(f"Taking {amount} questions per dataset from {', '.join(names)}...")
     info = benchmark.build_sample(
         args.out,
         datasets=names,
-        per_dataset=args.per_dataset,
+        per_dataset=per_dataset,
         split=split,
         min_per_stratum=args.min_per_stratum,
         seed=args.seed,
@@ -207,6 +209,11 @@ def build_parser() -> argparse.ArgumentParser:
     sample.add_argument("--out", type=Path, default=benchmark.DEFAULT_MANIFEST)
     sample.add_argument("--datasets", default=",".join(benchmark.PILOT_DATASETS))
     sample.add_argument("--per-dataset", type=int, default=100)
+    sample.add_argument(
+        "--all-questions",
+        action="store_true",
+        help="every question in the split (several per document) instead of a sample",
+    )
     sample.add_argument(
         "--split", choices=("train", "val", "test", "all"), default="train", help="router split"
     )
