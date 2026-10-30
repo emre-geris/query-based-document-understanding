@@ -48,7 +48,7 @@ Never use `pip install` or edit `uv.lock` by hand.
 - Datasets are downloaded by `qdu data download` into the user's Hugging Face cache (`~/.cache/huggingface`), never into the repo.
 - Keep the virtual environment outside OneDrive: set `UV_PROJECT_ENVIRONMENT` (e.g. `C:\Users\<you>\venvs\qdu`) before `uv sync`.
 - No local GPU. Qwen3.5 runs behind a vLLM OpenAI-compatible server on a **Colab L4** (paid compute units) via `notebooks/gpu_pilot.ipynb`; benchmark runs execute on that machine against `localhost` so measured latency excludes network time. Everything else runs on a laptop.
-- **T4 does not work** for Qwen3.5 on vLLM 0.32 (engine init fails on compute capability 7.5, tested 30 Oct 2026), so free Colab/Kaggle GPUs are not an option.
+- Qwen3.5 on vLLM 0.32 **failed to start on a T4** in our attempt (engine init error on compute capability 7.5, 30 Oct 2026; root cause not isolated), so we use an L4.
 - Qwen3.5 thinks by default. Every request must disable it (`chat_template_kwargs: {enable_thinking: false}`); otherwise answers, latency and token cost are all distorted.
 - Stop the vLLM server with `pkill -f "^/usr/bin/python3 /usr/local/bin/vllm"`; an unanchored `pkill -f "vllm serve"` also matches and kills the shell that runs it.
 
@@ -91,7 +91,9 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [x] E · Cost = OCR time + model latency (+ tokens) per path, reported side by side with ANLS (`metrics.csv`)
 - [x] Ortak · Run 3 paths on the pilot (Colab L4, 30 Oct): `results/pilot-qwen3.5-4b/` with README
 - [x] E · Oracle ties broken by measured per-question cost; reports for latency and token cost
-- [ ] Ortak · Go/no-go (team + advisor). Pilot evidence: oracle +4.9 ANLS over always-vision at equal latency (+3.4 over always-hybrid at half its latency); each path wins somewhere (labels 52/235/13). Recommendation: **go**, with always-vision as the main baseline
+- [ ] R · Record the vLLM launch flags (caches off, max-model-len) in `run_info.json`; today they are only in the notebook
+- [ ] E · Re-run vision/hybrid on the 27 pilot infographics above 4 MP with a higher image cap, to separate the hybrid gain from the downscaling effect
+- [ ] Ortak · Go/no-go (team + advisor). Pilot evidence: oracle +4.9 ANLS over always-vision at equal latency, 95% CI [+2.7, +7.3]; +3.4 over always-hybrid [+1.7, +5.3]; vision and hybrid statistically tied. Only 34/300 questions are won by a single path (vision 18, hybrid 13, text 3), so much of the value is cost saving on easy questions. Recommendation: **go**, judged against always-vision
 
 ### Phase 2 — Data & labels (H4–H7)
 - [x] H · Download TAT-DQA test files (`tatdqa_docs_test.zip`, `tatdqa_dataset_test_gold.json`) into the HF cache
