@@ -130,4 +130,5 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - Tools: PP-DocLayout (PaddleOCR 3.x) instead of DocLayout-YOLO for layout; PP-OCRv5 as the stronger OCR backend next to Tesseract (Oct 2026).
 - ChartQA: relaxed accuracy (5% numeric tolerance) is reported next to ANLS for every dataset; ChartQA results are read from relaxed accuracy. TAT-DQA's official EM/F1 with scale is still to be added (Phase 5).
 - Images sent to the model are capped at 4 MP (aspect ratio kept; `QDU_MAX_IMAGE_PIXELS`) for both vision and hybrid paths; OCR uses the full-resolution page. Every run records GPU, vLLM version and request settings in `run_info.json`.
+- vLLM runs with prefix caching and the multimodal processor cache **off** (`--no-enable-prefix-caching --mm-processor-cache-gb 0`). The smoke test showed hybrid calls 3x faster than vision calls on the same page despite more input tokens, because the image was cached by the preceding vision call; with caches on, measured latency is not a fair cost.
 - The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.
