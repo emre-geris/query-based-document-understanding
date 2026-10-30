@@ -9,9 +9,16 @@ Decoding is greedy and short, because answers are short extractive spans. Qwen3.
 disabled on every request through ``chat_template_kwargs``.
 
 Page images are downscaled (aspect ratio kept) to at most ``max_image_pixels`` before sending
-(default 4 MP, override with ``QDU_MAX_IMAGE_PIXELS``). Very tall infographics would otherwise
-exceed the server's context. The cap applies equally to the vision and hybrid paths; OCR always
-runs on the full-resolution page.
+(override with ``QDU_MAX_IMAGE_PIXELS``). The default is Qwen3.5's own processor limit
+(``size.longest_edge`` = 16,777,216 pixels in its ``preprocessor_config.json``, about 16k image
+tokens), so we impose no stricter cap than the model itself: a 4 MP cap in the pilot
+downscaled a quarter of DocVQA and InfographicVQA pages and favoured the hybrid path, whose
+OCR still saw the full page. The server needs ``--max-model-len`` above ~17k tokens for the
+largest pages. The cap applies equally to the vision and hybrid paths; OCR always runs on the
+full-resolution page.
+
+The server's launch flags are not visible through the API, so the runbook passes them in
+``QDU_SERVER_ARGS`` and they are recorded with every run.
 """
 
 import base64
@@ -30,7 +37,7 @@ if TYPE_CHECKING:
     from PIL.Image import Image
 
 DEFAULT_BASE_URL = "http://localhost:8000/v1"
-DEFAULT_MAX_IMAGE_PIXELS = 4_000_000
+DEFAULT_MAX_IMAGE_PIXELS = 16_777_216  # Qwen3.5 preprocessor size.longest_edge
 _BICUBIC = 3  # PIL.Image.Resampling.BICUBIC
 
 
@@ -117,6 +124,7 @@ class OpenAICompatModel:
             "temperature": 0.0,
             "thinking_disabled": self.disable_thinking,
             "max_image_pixels": self.max_image_pixels,
+            "server_args": os.environ.get("QDU_SERVER_ARGS"),
             "server_version": _fetch_json(f"{root}/version"),
             "server_models": _fetch_json(f"{root}/v1/models"),
         }

@@ -67,9 +67,12 @@ def test_image_cap_comes_from_environment(monkeypatch) -> None:
     assert OpenAICompatModel("m", client=RecordingClient()).max_image_pixels == 123456
 
 
-def test_describe_records_settings_even_without_a_server() -> None:
+def test_describe_records_settings_even_without_a_server(monkeypatch) -> None:
+    monkeypatch.delenv("QDU_MAX_IMAGE_PIXELS", raising=False)
+    monkeypatch.setenv("QDU_SERVER_ARGS", "--no-enable-prefix-caching")
     model = OpenAICompatModel("m", base_url="http://127.0.0.1:9/v1", client=RecordingClient())
     info = model.describe()
     assert info["thinking_disabled"] is True
-    assert info["max_image_pixels"] == 4_000_000
+    assert info["max_image_pixels"] == 16_777_216
+    assert info["server_args"] == "--no-enable-prefix-caching"
     assert info["server_version"] is None  # unreachable server is recorded, not fatal
