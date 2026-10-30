@@ -46,9 +46,10 @@ Never use `pip install` or edit `uv.lock` by hand.
 - Primary development is on Windows. Tesseract is expected on `PATH` or at `C:\Program Files\Tesseract-OCR\tesseract.exe`.
 - Datasets are downloaded by `qdu data download` into the user's Hugging Face cache (`~/.cache/huggingface`), never into the repo.
 - Keep the virtual environment outside OneDrive: set `UV_PROJECT_ENVIRONMENT` (e.g. `C:\Users\<you>\venvs\qdu`) before `uv sync`.
-- No local GPU. Qwen3.5 runs behind a vLLM OpenAI-compatible server on a Kaggle T4 (choose **GPU T4 x2**, not P100) or a university GPU; benchmark runs execute on that machine against `localhost` so measured latency excludes network time. Everything else runs on a laptop.
+- No local GPU. Qwen3.5 runs behind a vLLM OpenAI-compatible server on a **Colab L4** (paid compute units) via `notebooks/gpu_pilot.ipynb`; benchmark runs execute on that machine against `localhost` so measured latency excludes network time. Everything else runs on a laptop.
+- **T4 does not work** for Qwen3.5 on vLLM 0.32 (engine init fails on compute capability 7.5, tested 30 Oct 2026), so free Colab/Kaggle GPUs are not an option.
 - Qwen3.5 thinks by default. Every request must disable it (`chat_template_kwargs: {enable_thinking: false}`); otherwise answers, latency and token cost are all distorted.
-- T4 has no bf16: serve in fp16 and check the pilot for numerical problems.
+- Stop the vLLM server with `pkill -f "^/usr/bin/python3 /usr/local/bin/vllm"`; an unanchored `pkill -f "vllm serve"` also matches and kills the shell that runs it.
 
 ## Datasets
 
@@ -79,7 +80,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [x] Resumable runner, provenance, `qdu benchmark sample|run|report`, `qdu answer`
 
 ### Phase 1 — Pilot & go/no-go (H3–H4, decision **30 Oct**)
-- [ ] R · vLLM server for **Qwen3.5-4B** on Kaggle T4 (thinking off, fp16) + setup notes in README; Qwen3.5-9B (2×T4 tensor-parallel or quantized) only if the pilot justifies it
+- [x] R · vLLM server for **Qwen3.5-4B** on a Colab L4 (bf16, thinking off, caches off); starts in ~7 min. Qwen3.5-9B only if the pilot justifies it
 - [x] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, thinking disabled, token usage, timeouts, retries)
 - [x] R/E · GPU runbook `notebooks/gpu_pilot.ipynb` (Colab L4/A100 or Kaggle T4): vLLM + Qwen3.5-4B, data, smoke test, pilot, report
 - [x] H · Dataset registry (`qdu.data.sources`): DocVQA, InfographicVQA, ChartQA on the same `QARecord`; `qdu data download`
