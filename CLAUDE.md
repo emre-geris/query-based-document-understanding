@@ -48,7 +48,7 @@ Never use `pip install` or edit `uv.lock` by hand.
 - Datasets are downloaded by `qdu data download` into the user's Hugging Face cache (`~/.cache/huggingface`), never into the repo.
 - Keep the virtual environment outside OneDrive: set `UV_PROJECT_ENVIRONMENT` (e.g. `C:\Users\<you>\venvs\qdu`) before `uv sync`.
 - No local GPU. Qwen3.5 runs behind a vLLM OpenAI-compatible server on a **Colab L4** (paid compute units) via `notebooks/gpu_run.ipynb`; benchmark runs execute on that machine against `localhost` so measured latency excludes network time. OCR for long runs is cached beforehand on a Colab CPU runtime (`notebooks/ocr_prepass.ipynb`, `qdu ocr warm`). Both keep their outputs on Google Drive, since a Colab disk is lost on disconnect. Everything else runs on a laptop.
-- PP-OCRv5 on Windows runs with oneDNN off (it crashes otherwise), ~24 s per page: fine for small comparisons, not for full manifests.
+- PP-OCRv5 runs with oneDNN off: with paddlepaddle 3.3.1 oneDNN crashes on its graph on Windows and on Linux/Colab (`QDU_PADDLE_MKLDNN=1` re-enables it). On a laptop that is ~24 s per page, so full manifests are OCR'd on Colab.
 - Qwen3.5 on vLLM 0.32 **failed to start on a T4** in our attempt (engine init error on compute capability 7.5, 30 Oct 2026; root cause not isolated), so we use an L4.
 - Qwen3.5 thinks by default. Every request must disable it (`chat_template_kwargs: {enable_thinking: false}`); otherwise answers, latency and token cost are all distorted.
 - Stop the vLLM server with `pkill -f "^/usr/bin/python3 /usr/local/bin/vllm"`; an unanchored `pkill -f "vllm serve"` also matches and kills the shell that runs it.
