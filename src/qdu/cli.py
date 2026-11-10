@@ -133,6 +133,21 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit(args: argparse.Namespace) -> int:
+    from qdu.audit import audit
+
+    lines, problems = audit(args.run_dir, examples=args.examples)
+    print("\n".join(lines))
+    print()
+    if not problems:
+        print("All checks passed.")
+        return 0
+    print(f"{len(problems)} problems:")
+    for problem in problems[:50]:
+        print(f"  - {problem}")
+    return 1
+
+
 def cmd_rescore(args: argparse.Namespace) -> int:
     stats = benchmark.rescore(args.run_dir)
     print(
@@ -296,6 +311,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     rep = bench_sub.add_parser("report", help="summarize a run")
     rep.add_argument("run_dir", type=Path)
+    aud = bench_sub.add_parser(
+        "audit", help="re-derive scores and costs from the raw rows and check their consistency"
+    )
+    aud.add_argument("run_dir", type=Path)
+    aud.add_argument("--examples", type=int, default=3, help="example questions per dataset")
+    aud.set_defaults(func=cmd_audit)
     resc = bench_sub.add_parser(
         "rescore", help="re-derive answers from raw model output with the current cleaning"
     )
