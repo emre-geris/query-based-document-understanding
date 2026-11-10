@@ -92,3 +92,25 @@ def test_describe_records_settings_even_without_a_server(monkeypatch) -> None:
     assert info["max_image_pixels"] == 16_777_216
     assert info["server_args"] == "--no-enable-prefix-caching"
     assert info["server_version"] is None  # unreachable server is recorded, not fatal
+
+
+def test_same_page_is_encoded_once_for_vision_then_hybrid(monkeypatch) -> None:
+    import qdu.models.openai_compat as oc
+
+    calls = []
+    real = oc.image_to_data_url
+
+    def counting(image, max_pixels=None):
+        calls.append(image)
+        return real(image, max_pixels)
+
+    monkeypatch.setattr(oc, "image_to_data_url", counting)
+    client = RecordingClient()
+    model = OpenAICompatModel("m", client=client)
+    page, other = Image.new("RGB", (4, 4)), Image.new("RGB", (4, 4))
+    model.generate("vision", [page])
+    model.generate("hybrid", [page])
+    model.generate("next", [other])
+    assert calls == [page, other]
+    urls = [r["messages"][0]["content"][0]["image_url"]["url"] for r in client.requests]
+    assert urls[0] == urls[1]

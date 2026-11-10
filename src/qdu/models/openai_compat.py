@@ -28,7 +28,7 @@ import math
 import os
 import time
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 from qdu.models.base import Generation
@@ -52,19 +52,24 @@ def limit_pixels(image: "Image", max_pixels: int | None) -> "Image":
 
 
 def image_to_data_url(image: "Image", max_pixels: int | None = None) -> str:
+    """Lossless PNG data URL. Compression level 1 encodes several times faster than the
+    default on large pages; the pixels the model sees are identical."""
     buffer = io.BytesIO()
-    limit_pixels(image.convert("RGB"), max_pixels).save(buffer, format="PNG")
+    limit_pixels(image.convert("RGB"), max_pixels).save(buffer, format="PNG", compress_level=1)
     return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
 def build_messages(
-    prompt: str, images: Sequence["Image"], max_pixels: int | None = None
+    prompt: str,
+    images: Sequence["Image"],
+    max_pixels: int | None = None,
+    encode: Callable[["Image"], str] | None = None,
 ) -> list[dict[str, Any]]:
     if not images:
         return [{"role": "user", "content": prompt}]
+    encode = encode or (lambda image: image_to_data_url(image, max_pixels))
     content: list[dict[str, Any]] = [
-        {"type": "image_url", "image_url": {"url": image_to_data_url(image, max_pixels)}}
-        for image in images
+        {"type": "image_url", "image_url": {"url": encode(image)}} for image in images
     ]
     content.append({"type": "text", "text": prompt})
     return [{"role": "user", "content": content}]
@@ -112,6 +117,7 @@ class OpenAICompatModel:
         self.max_image_pixels = max_image_pixels or int(
             os.environ.get("QDU_MAX_IMAGE_PIXELS", DEFAULT_MAX_IMAGE_PIXELS)
         )
+        self._last_encoded: tuple[Image, str] | None = None
 
     def describe(self) -> dict[str, Any]:
         """Request settings plus, when reachable, the server's version and model list."""
@@ -129,13 +135,22 @@ class OpenAICompatModel:
             "server_models": _fetch_json(f"{root}/v1/models"),
         }
 
+    def _encode(self, image: "Image") -> str:
+        """Data URL for ``image``; the vision and hybrid paths send the same page object one
+        after the other, so the last encoding is reused (identity check, no hashing)."""
+        if self._last_encoded is not None and self._last_encoded[0] is image:
+            return self._last_encoded[1]
+        url = image_to_data_url(image, self.max_image_pixels)
+        self._last_encoded = (image, url)
+        return url
+
     def generate(self, prompt: str, images: Sequence["Image"] = ()) -> Generation:
         extra_body = (
             {"chat_template_kwargs": {"enable_thinking": False}} if self.disable_thinking else {}
         )
         # Resizing and PNG-encoding a 16 MP page takes seconds on the client; it is an artefact
         # of the HTTP transport, not model cost, so it happens before the clock starts.
-        messages = build_messages(prompt, images, self.max_image_pixels)
+        messages = build_messages(prompt, images, encode=self._encode)
         start = time.perf_counter()
         response = self._client.chat.completions.create(
             model=self.model,
