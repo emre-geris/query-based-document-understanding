@@ -85,6 +85,12 @@ question per document, so questions are independent units).
   token counts are hardware-free.
 - The vLLM flags of this run (caches off, `--max-model-len 16384`) were set by hand and are not
   in `run_info.json`; the server log at the time showed `enable_prefix_caching=False`.
+- Vision and hybrid model latency includes resizing and PNG-encoding the page on the client
+  (timed by mistake; fixed for the full run). Re-measured on a laptop CPU for these 300 pages:
+  0.13 s per call on average (DocVQA 0.20, InfographicVQA 0.17, ChartQA 0.01), about a tenth
+  of the 1.2-1.3 s vision/hybrid latency, likely more on the Colab CPU. It is the same for
+  vision and hybrid, so their comparison is unaffected; against text it slightly overstates
+  both.
 - Whether Qwen3.5 saw these evaluation sets during training is unknown.
 - The "oracle" is an upper bound, not a router: it knows each path's score in advance.
 
@@ -97,3 +103,6 @@ question per document, so questions are independent units).
 | List answers scored by their first line | Lists joined into one answer |
 | vLLM flags only in the notebook | Recorded in `run_info.json` (`QDU_SERVER_ARGS`) |
 | One question per document (manifest) | `qdu benchmark sample --all-questions`; confidence intervals must resample by document |
+| Client-side PNG encoding inside model latency | Request built before the clock starts |
+| Tesseract OCR, run inline on the GPU machine | PP-OCRv5 mobile (coverage 0.63 vs 0.42 on these pages), cached in a CPU pre-pass with the CPU recorded per page |
+| One cost column (OCR per question) | Scenario C (`total_s`) and B (`total_shared_s`, OCR shared by a page's questions) |
