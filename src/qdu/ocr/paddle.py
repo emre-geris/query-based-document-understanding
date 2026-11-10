@@ -14,8 +14,9 @@ OCR time.
 paddlepaddle). GPU results get their own engine name (``-gpu``), cache directory and hardware
 record (the GPU's name), so CPU and GPU OCR times are never mixed.
 
-The first prediction pays one-off initialisation, so the engine runs once on a blank page
-when it is built; otherwise the first page of every session would report an inflated time.
+The first prediction pays one-off initialisation, so the engine runs once on a page of text
+(`warmup_page`) when it is built; otherwise the first page of every session would report an
+inflated time.
 """
 
 import os
@@ -23,7 +24,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from qdu.ocr.base import OcrLine, OcrResult, cache_file, read_cache, write_cache
+from qdu.ocr.base import OcrLine, OcrResult, cache_file, read_cache, warmup_page, write_cache
 from qdu.provenance import cpu_info, gpu_info
 
 if TYPE_CHECKING:
@@ -63,9 +64,7 @@ class PaddleOcr:
         folder = f"paddle-{model}" + ("-gpu" if gpu else "")
         self.cache_dir = cache_dir / folder if cache_dir else None
 
-        import numpy as np
-
-        self._ocr.predict(np.full((64, 256, 3), 255, dtype=np.uint8))  # warm-up, not timed
+        self._ocr.predict(warmup_page())  # warm-up, not timed
 
     def _cache_path(self, key: str) -> Path | None:
         return cache_file(self.cache_dir, key) if self.cache_dir else None

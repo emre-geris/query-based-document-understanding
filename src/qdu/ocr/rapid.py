@@ -13,8 +13,8 @@ RapidOCR's "EXHAUSTIVE" (1.15 s) without re-running a search for every new page 
 Recognition batches of 6 lines (RapidOCR's default) beat 64 (2.5 s) on the GPU.
 
 Results carry their own engine name (``-gpu`` on the GPU), cache directory and hardware
-record, as for PaddleOCR. The engine runs once on a blank page when built, so one-off
-initialisation is not charged to the first page.
+record, as for PaddleOCR. The engine runs once on a page of text (`warmup_page`) when built, so
+one-off initialisation is not charged to the first page.
 """
 
 import time
@@ -22,7 +22,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from qdu.ocr.base import OcrLine, OcrResult, cache_file, read_cache, write_cache
+from qdu.ocr.base import OcrLine, OcrResult, cache_file, read_cache, warmup_page, write_cache
 from qdu.provenance import cpu_info, gpu_info
 
 if TYPE_CHECKING:
@@ -66,9 +66,7 @@ class RapidOcr:
         self.hardware = gpus[0]["name"] if gpus else cpu_info()
         self.cache_dir = cache_dir / f"rapid-{model}{suffix}" if cache_dir else None
 
-        import numpy as np
-
-        self._ocr(np.full((64, 256, 3), 255, dtype=np.uint8))  # warm-up, not timed
+        self._ocr(warmup_page())  # warm-up, not timed
 
     def _cache_path(self, key: str) -> Path | None:
         return cache_file(self.cache_dir, key) if self.cache_dir else None

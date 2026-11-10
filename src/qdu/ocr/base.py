@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    import numpy as np
     from PIL.Image import Image
 
 # Characters Windows does not allow in file names ("/" separates cache sub-directories).
@@ -50,6 +51,28 @@ class OcrResult:
     None when the engine does not report them. Kept in the cache so signals need no new OCR."""
     page_size: tuple[int, int] | None = None
     """Width and height of the page the boxes refer to."""
+
+
+def warmup_page() -> "np.ndarray":
+    """A page-sized image with lines of text, for running an engine once before timing.
+
+    A blank page is not enough: detection finds no text, so the recognition model never runs
+    and its one-off GPU set-up (20 s for the first page on an L4) lands on the first real page.
+    """
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (1200, 1600), "white")
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=28)
+    for i in range(30):
+        draw.text(
+            (60, 50 + 50 * i),
+            f"Line {i}: total revenue 2019 was ${i * 137:,}",
+            fill="black",
+            font=font,
+        )
+    return np.array(image)
 
 
 def read_cache(path: Path | None, size: tuple[int, int] | None = None) -> OcrResult | None:
