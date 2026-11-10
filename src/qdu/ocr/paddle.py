@@ -4,11 +4,11 @@ Install the optional extra first: ``uv sync --extra paddle``. Two model sizes ar
 ``mobile`` (fast, CPU-friendly) and ``server`` (more accurate, slower). Document orientation,
 unwarping and text-line orientation are off: benchmark pages are upright scans and renders.
 
-The oneDNN CPU backend fails on PP-OCRv5's graph with paddlepaddle 3.3.1
-("ConvertPirAttribute2RuntimeAttribute not support"), on Windows and on Linux (Colab, Nov
-2026), so oneDNN is off by default; CPU inference is slower but correct. ``QDU_PADDLE_MKLDNN=1``
-turns it on for a paddle version where it works. The engine name records the setting
-(``-nomkldnn``), since it changes the measured OCR time.
+CPU inference uses oneDNN, which makes it 5-8x faster. With paddlepaddle 3.3.x oneDNN fails
+on PP-OCRv5's graph ("ConvertPirAttribute2RuntimeAttribute not support", Windows and Linux),
+so the ``paddle`` extra pins paddlepaddle 3.2.2, where it works. ``QDU_PADDLE_MKLDNN=0`` turns
+oneDNN off; the engine name then ends in ``-nomkldnn``, since the setting changes the measured
+OCR time.
 
 The first prediction pays one-off initialisation, so the engine runs once on a blank page
 when it is built; otherwise the first page of every session would report an inflated time.
@@ -39,7 +39,7 @@ class PaddleOcr:
             raise RuntimeError("PaddleOCR is not installed: run `uv sync --extra paddle`") from exc
 
         prefix = f"PP-OCRv5_{model}"
-        mkldnn = os.environ.get("QDU_PADDLE_MKLDNN", "0") == "1"
+        mkldnn = os.environ.get("QDU_PADDLE_MKLDNN", "1") != "0"
         self._ocr = PaddleOCR(
             text_detection_model_name=f"{prefix}_det",
             text_recognition_model_name=f"{prefix}_rec",

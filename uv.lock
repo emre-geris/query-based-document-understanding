@@ -1312,7 +1312,7 @@ wheels = [
 
 [[package]]
 name = "paddlepaddle"
-version = "3.3.1"
+version = "3.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1322,13 +1322,13 @@ dependencies = [
     { name = "pillow" },
     { name = "protobuf" },
     { name = "safetensors" },
-    { name = "setuptools" },
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/65/f8/bebb829227ac5574454b4342bcf512dbb02268118b62222fc7c1b420a3ef/paddlepaddle-3.3.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:2ce30bfb0023d8c9314b1413ca7a775a4ddd076e4551e74fbed2366cf1395c98", size = 104538799, upload-time = "2026-03-26T11:18:41.158Z" },
-    { url = "https://files.pythonhosted.org/packages/56/8d/5a700dc20c0d3d581f1d429f95f5064eb766c2818c5a05992dfef66b0765/paddlepaddle-3.3.1-cp313-cp313-manylinux1_x86_64.whl", hash = "sha256:4f28038427649bb2fcfd4d52efa85ed8311df19122b4ebedc942484a0b57b032", size = 194837642, upload-time = "2026-03-24T08:02:36.024Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/c8/408b9e94ac2e10a55c1122b787359f7a6f79ef894ee1d57d78c5cca838d0/paddlepaddle-3.3.1-cp313-cp313-win_amd64.whl", hash = "sha256:1203e2e1114b49e73a8440b68837ce5c93fdab51fe4838c5e5874ab40f58f747", size = 104794530, upload-time = "2026-03-26T11:11:52.214Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/14/af48dcf222555f83480c8d50662944c34952b601b1f2b2264f5afe7e073a/paddlepaddle-3.2.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f7e9bc0469d13d99925cd766c4a6ceeb5ab6043b790dd415ce076fbbebb39074", size = 99507300, upload-time = "2025-11-14T13:29:45.539Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/95/909e963330997da9da7e3f51337c19a022d8ba2b7863aaca5694aeca26cf/paddlepaddle-3.2.2-cp313-cp313-manylinux1_x86_64.whl", hash = "sha256:c4f485596a686ea72ab0ddffc9e41178f456314a99d4538f5d181a0156a927fa", size = 189281004, upload-time = "2025-11-19T11:53:41.89Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/76/74aed8ab5ac6961145bf3e0907a26ffccb69e35cafcd18e4046bb68565dd/paddlepaddle-3.2.2-cp313-cp313-manylinux2014_aarch64.whl", hash = "sha256:b03569ba151ac50aa730955c65dfa571fe7ae71f94574c94e8bfe5e0913a7d9c", size = 88143036, upload-time = "2025-11-19T11:20:22.844Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/b8/8a9f7b673c6ac0f26d8eb49cf8e7689e2f3f5cadd2fc6569ee5b9a4da81d/paddlepaddle-3.2.2-cp313-cp313-win_amd64.whl", hash = "sha256:a05d126c234d3985439cedf1f1005b109c3591ec2a0c5b59ca74a94b693eb283", size = 101726676, upload-time = "2025-11-14T13:17:22.507Z" },
 ]
 
 [[package]]
@@ -2098,7 +2098,7 @@ requires-dist = [
     { name = "datasets", specifier = ">=5.0.1" },
     { name = "openai", specifier = ">=3.41.0" },
     { name = "paddleocr", marker = "extra == 'paddle'", specifier = ">=3.7.0" },
-    { name = "paddlepaddle", marker = "extra == 'paddle'", specifier = ">=3.3.1" },
+    { name = "paddlepaddle", marker = "extra == 'paddle'", specifier = "==3.2.2" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pytesseract", specifier = ">=0.3.13" },
 ]
