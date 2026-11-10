@@ -1,3 +1,4 @@
+import io
 import json
 import re
 from pathlib import Path
@@ -166,3 +167,47 @@ def test_rescore_rederives_answers_from_raw_output(tmp_path: Path) -> None:
     assert saved[0]["prediction"] == "140858" and saved[0]["anls"] == 1.0
     assert saved[2]["error"] == "Timeout"  # failed rows untouched
     assert (run_dir / "rescore_info.json").exists()
+
+
+def test_build_largest_takes_one_question_on_each_largest_page(tmp_path: Path) -> None:
+    from datasets import Dataset, Features, Sequence, Value
+    from datasets import Image as ImageFeature
+
+    def png_bytes(image: Image.Image) -> bytes:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    widths = [100, 400, 200, 300]  # width of docs 0..3; doc 1 has two questions
+    docs = [0, 1, 1, 2, 3]
+    features = Features(
+        {
+            "questionId": Value("string"),
+            "docId": Value("int64"),
+            "question": Value("string"),
+            "answers": Sequence(Value("string")),
+            "question_types": Sequence(Value("string")),
+            "image": ImageFeature(),
+        }
+    )
+    data = Dataset.from_dict(
+        {
+            "questionId": [str(i) for i in range(5)],
+            "docId": docs,
+            "question": ["q"] * 5,
+            "answers": [["a"]] * 5,
+            "question_types": [["form"]] * 5,
+            "image": [
+                {"bytes": png_bytes(Image.new("RGB", (widths[d], 100))), "path": None} for d in docs
+            ],
+        },
+        features=features,
+    )
+    full = tmp_path / "full.csv"
+    benchmark.build_sample(
+        full, datasets=["docvqa"], per_dataset=None, split=None, loaded={"docvqa": data}
+    )
+    smoke = tmp_path / "smoke.csv"
+    info = benchmark.build_largest(smoke, full, n=2, loaded={"docvqa": data})
+    assert [r.doc_id for r in read_manifest(smoke)] == ["docvqa/1", "docvqa/3"]
+    assert info["pages"] == {"docvqa/1": "400x100", "docvqa/3": "300x100"}

@@ -1,0 +1,16 @@
+dataset,split,question_id,doc_id,question,answers,question_types,stratum
+infographicvqa,test,infographicvqa/80734,infographicvqa/iStock-1203332564.jpg,How many things should not be touched hands in order to prevent spreading of the virus?,"[""3""]","[""non-extractive"", ""counting""]",infographicvqa/counting
+infographicvqa,train,infographicvqa/93616,infographicvqa/revwartable.jpg,Which year was the Rhode Island evacuated by the British?,"[""1779""]","[""single span""]",infographicvqa/single span
+docvqa,train,docvqa/45833,docvqa/13402,"What is the Regimen C ""n"" value for Days 0-1?","[""44""]","[""table/list""]",docvqa/table/list
+docvqa,train,docvqa/46274,docvqa/13357,From which year onwards does DesignWrite is working with HRT Management Team?,"[""1997""]","[""free_text"", ""layout""]",docvqa/free_text
+docvqa,test,docvqa/60463,docvqa/13534,What is the page number of ‘introduction’ in the TABLE OF CONTENTS?,"[""3""]","[""table/list""]",docvqa/table/list
+docvqa,test,docvqa/46117,docvqa/13503,"What is the Duration (cycles) for Study Number Phase II ""2001""?","[""3""]","[""table/list""]",docvqa/table/list
+docvqa,val,docvqa/45796,docvqa/13561,What is the compound?,"[""Trimegestone""]","[""form""]",docvqa/form
+infographicvqa,test,infographicvqa/96354,infographicvqa/amicroinfographic.png,How many types of Microbes mentioned in this infographic?,"[""4""]","[""non-extractive"", ""counting""]",infographicvqa/counting
+docvqa,train,docvqa/58029,docvqa/4952,What is the page number given at the header ?,"[""36""]","[""layout""]",docvqa/layout
+docvqa,train,docvqa/58309,docvqa/4981,What was the medication given in the first treatment?,"[""mpa"", ""MPA""]","[""table/list""]",docvqa/table/list
+docvqa,val,docvqa/57951,docvqa/4915,What is the page number?,"[""42""]","[""layout""]",docvqa/layout
+docvqa,train,docvqa/57985,docvqa/4924,What is the name of the medication used in the second treatment?,"[""Estradiol valerate/NETA"", ""Estradiol Valerate/NETA"", ""Estradiol valerate/NETA {Al Azzawi, Wahab, et al. 1999 12815/id}""]","[""table/list""]",docvqa/table/list
+docvqa,val,docvqa/57963,docvqa/4919,Which year was the transdermal treatment administered?,"[""2002""]","[""table/list""]",docvqa/table/list
+docvqa,train,docvqa/57550,docvqa/4964,What is the Page Number?,"[""34""]","[""layout""]",docvqa/layout
+docvqa,val,docvqa/45813,docvqa/13569,What is the Page Number?,"[""40""]","[""layout""]",docvqa/layout

@@ -123,6 +123,40 @@ def build_sample(
     return info
 
 
+def build_largest(
+    manifest: Path,
+    source: Path,
+    *,
+    n: int = 15,
+    loaded: Mapping[str, "Dataset"] | None = None,
+) -> dict[str, Any]:
+    """One question on each of the ``n`` largest pages (by pixel count) of ``source``.
+
+    A smoke test on these pages checks, before a long paid run, that the largest image plus
+    OCR text fits the server's context and the request timeout.
+    """
+    records = read_manifest(source)
+    images = ImageStore(loaded)
+    first: dict[str, Any] = {}
+    for r in records:
+        first.setdefault(r.doc_id, r)
+    sizes = {doc: images.get(r).size for doc, r in first.items()}
+    largest = sorted(first, key=lambda doc: (-sizes[doc][0] * sizes[doc][1], doc))[:n]
+    write_manifest([first[doc] for doc in largest], manifest)
+    info = run_metadata(
+        source_manifest=source.as_posix(),
+        source_manifest_sha256=file_sha256(source),
+        selection=f"one question on each of the {n} largest pages",
+        pages={doc: f"{sizes[doc][0]}x{sizes[doc][1]}" for doc in largest},
+        questions=len(largest),
+        manifest_sha256=file_sha256(manifest),
+    )
+    info_path(manifest).write_text(
+        json.dumps(info, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    return info
+
+
 def _describe(model: LanguageModel) -> dict[str, Any] | None:
     describe = getattr(model, "describe", None)
     return describe() if callable(describe) else None

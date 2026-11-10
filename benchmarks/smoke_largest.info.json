@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-10T16:33:33",
+  "git_commit": "1eb4e45a60f144b09697929eacd5ec164a54043c",
+  "git_dirty": true,
+  "python": "3.13.6",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "packages": {
+    "datasets": "5.1.0",
+    "openai": "3.41.0",
+    "pillow": "13.0.0",
+    "pytesseract": "0.3.13"
+  },
+  "source_manifest": "benchmarks/full.csv",
+  "source_manifest_sha256": "25d31b7efff85826771ed2c7e2f6ddb9c997b2bfbfd800b8765e64746129c0fc",
+  "selection": "one question on each of the 15 largest pages",
+  "pages": {
+    "infographicvqa/iStock-1203332564.jpg": "6250x9375",
+    "infographicvqa/revwartable.jpg": "9024x5648",
+    "docvqa/13402": "5367x7184",
+    "docvqa/13357": "5371x7171",
+    "docvqa/13534": "5325x7138",
+    "docvqa/13503": "5313x7150",
+    "docvqa/13561": "5313x7150",
+    "infographicvqa/amicroinfographic.png": "5065x7419",
+    "docvqa/4952": "6921x5392",
+    "docvqa/4981": "6915x5386",
+    "docvqa/4915": "6913x5382",
+    "docvqa/4924": "6913x5382",
+    "docvqa/4919": "6911x5378",
+    "docvqa/4964": "6896x5359",
+    "docvqa/13569": "5338x6880"
+  },
+  "questions": 15,
+  "manifest_sha256": "4448513371fa6295d1b33b4b1673451af858b8a8208b3f5d8963e2ef7faee3bd"
+}

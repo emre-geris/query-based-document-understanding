@@ -82,6 +82,14 @@ def cmd_sample(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_largest(args: argparse.Namespace) -> int:
+    info = benchmark.build_largest(args.out, args.source, n=args.n)
+    for doc, size in info["pages"].items():
+        print(f"  {doc:<44}{size:>12}")
+    print(f"\n{info['questions']} questions -> {args.out} and {benchmark.info_path(args.out)}")
+    return 0
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     from qdu.models import create_model
 
@@ -266,6 +274,13 @@ def build_parser() -> argparse.ArgumentParser:
     sample.add_argument("--min-per-stratum", type=int, default=5)
     sample.add_argument("--seed", type=int, default=42)
     sample.set_defaults(func=cmd_sample)
+    largest = bench_sub.add_parser(
+        "largest", help="one question on each of the largest pages of a manifest (smoke test)"
+    )
+    largest.add_argument("--source", type=Path, required=True, help="manifest to pick from")
+    largest.add_argument("--n", type=int, default=15)
+    largest.add_argument("--out", type=Path, required=True)
+    largest.set_defaults(func=cmd_largest)
     run = bench_sub.add_parser("run", help="run pipelines on the sample (resumable)")
     run.add_argument("--text-model", required=True)
     run.add_argument("--vision-model", required=True)

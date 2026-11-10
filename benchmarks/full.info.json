@@ -1,0 +1,118 @@
+{
+  "date": "2026-11-10T16:31:16",
+  "git_commit": "1eb4e45a60f144b09697929eacd5ec164a54043c",
+  "git_dirty": false,
+  "python": "3.13.6",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "packages": {
+    "datasets": "5.1.0",
+    "openai": "3.41.0",
+    "pillow": "13.0.0",
+    "pytesseract": "0.3.13"
+  },
+  "datasets": [
+    "docvqa",
+    "infographicvqa",
+    "chartqa",
+    "tatdqa"
+  ],
+  "router_split": null,
+  "per_dataset": null,
+  "min_per_stratum": 5,
+  "seed": 42,
+  "one_per_document": false,
+  "questions": 12305,
+  "sources": {
+    "docvqa": {
+      "hf": "lmms-lab/DocVQA/DocVQA:validation",
+      "license": "RRC DocVQA terms (research use)",
+      "population_questions": 5349,
+      "population_documents": 1286,
+      "population_strata": {
+        "table/list": 1625,
+        "layout": 1331,
+        "form": 784,
+        "free_text": 688,
+        "handwritten": 303,
+        "figure/diagram": 259,
+        "others": 233,
+        "Image/Photo": 98,
+        "Yes/No": 28
+      },
+      "sample_strata": {
+        "table/list": 1625,
+        "layout": 1331,
+        "form": 784,
+        "free_text": 688,
+        "handwritten": 303,
+        "figure/diagram": 259,
+        "others": 233,
+        "Image/Photo": 98,
+        "Yes/No": 28
+      }
+    },
+    "infographicvqa": {
+      "hf": "lmms-lab/DocVQA/InfographicVQA:validation",
+      "license": "RRC InfographicVQA terms (research use)",
+      "population_questions": 2801,
+      "population_documents": 500,
+      "population_strata": {
+        "single span": 1615,
+        "arithmetic": 290,
+        "counting": 285,
+        "comparison": 272,
+        "multi-span": 180,
+        "question span": 156,
+        "non-extractive": 3
+      },
+      "sample_strata": {
+        "single span": 1615,
+        "arithmetic": 290,
+        "counting": 285,
+        "comparison": 272,
+        "multi-span": 180,
+        "question span": 156,
+        "non-extractive": 3
+      }
+    },
+    "chartqa": {
+      "hf": "HuggingFaceM4/ChartQA/default:test",
+      "license": "GPL-3.0 (ChartQA repository)",
+      "population_questions": 2500,
+      "population_documents": 1509,
+      "population_strata": {
+        "human": 1250,
+        "augmented": 1250
+      },
+      "sample_strata": {
+        "human": 1250,
+        "augmented": 1250
+      }
+    },
+    "tatdqa": {
+      "hf": "next-tat/TAT-DQA/default:test",
+      "license": "CC BY 4.0",
+      "population_questions": 1655,
+      "population_documents": 291,
+      "population_strata": {
+        "span": 535,
+        "percent": 290,
+        "thousand": 273,
+        "multi-span": 209,
+        "million": 208,
+        "arithmetic": 100,
+        "count": 40
+      },
+      "sample_strata": {
+        "span": 535,
+        "percent": 290,
+        "thousand": 273,
+        "multi-span": 209,
+        "million": 208,
+        "arithmetic": 100,
+        "count": 40
+      }
+    }
+  },
+  "manifest_sha256": "25d31b7efff85826771ed2c7e2f6ddb9c997b2bfbfd800b8765e64746129c0fc"
+}
