@@ -87,3 +87,16 @@ def test_cpu_info_names_the_core_count() -> None:
     from qdu.provenance import cpu_info
 
     assert cpu_info().endswith(f"x {os.cpu_count()}")
+
+
+def test_cache_keeps_lines_boxes_and_page_size(tmp_path) -> None:
+    from qdu.ocr.base import OcrLine, OcrResult, read_cache, write_cache
+
+    lines = (OcrLine("TOTAL 42", 0.9654, (16, 182, 245, 239)),)
+    fresh = OcrResult("TOTAL 42", "e", 1.5, hardware="cpu x 2", lines=lines, page_size=(700, 300))
+    write_cache(tmp_path / "p.json", fresh)
+    cached = read_cache(tmp_path / "p.json")
+    assert cached is not None and cached.cached
+    assert (cached.lines, cached.page_size, cached.hardware) == (lines, (700, 300), "cpu x 2")
+    write_cache(tmp_path / "t.json", OcrResult("x", "tesseract", 0.1))
+    assert read_cache(tmp_path / "t.json").lines is None  # engines without boxes

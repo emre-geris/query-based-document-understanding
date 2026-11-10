@@ -26,6 +26,16 @@ def cache_file(cache_dir: Path, key: str) -> Path:
 
 
 @dataclass(frozen=True)
+class OcrLine:
+    """One recognised text line: its text, recognition confidence (0-1) and pixel box."""
+
+    text: str
+    score: float
+    box: tuple[int, int, int, int]
+    """x_min, y_min, x_max, y_max on the full-resolution page."""
+
+
+@dataclass(frozen=True)
 class OcrResult:
     text: str
     engine: str
@@ -34,14 +44,27 @@ class OcrResult:
     cached: bool = False
     hardware: str | None = None
     """CPU the latency was measured on (None for caches written before this was recorded)."""
+    lines: tuple[OcrLine, ...] | None = None
+    """Lines with confidences and boxes, for the OCR and evidence-location signals (S2, S4);
+    None when the engine does not report them. Kept in the cache so signals need no new OCR."""
+    page_size: tuple[int, int] | None = None
+    """Width and height of the page the boxes refer to."""
 
 
 def read_cache(path: Path | None) -> OcrResult | None:
     if path is None or not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
+    lines = data.get("lines")
+    size = data.get("page_size")
     return OcrResult(
-        data["text"], data["engine"], data["latency_s"], cached=True, hardware=data.get("hardware")
+        data["text"],
+        data["engine"],
+        data["latency_s"],
+        cached=True,
+        hardware=data.get("hardware"),
+        lines=None if lines is None else tuple(OcrLine(t, s, tuple(b)) for t, s, b in lines),
+        page_size=None if size is None else tuple(size),
     )
 
 
@@ -55,6 +78,10 @@ def write_cache(path: Path | None, result: OcrResult) -> None:
         "latency_s": result.latency_s,
         "hardware": result.hardware,
     }
+    if result.lines is not None:
+        payload["lines"] = [[ln.text, round(ln.score, 4), list(ln.box)] for ln in result.lines]
+    if result.page_size is not None:
+        payload["page_size"] = list(result.page_size)
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 

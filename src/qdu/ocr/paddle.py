@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from qdu.ocr.base import OcrResult, cache_file, read_cache, write_cache
+from qdu.ocr.base import OcrLine, OcrResult, cache_file, read_cache, write_cache
 from qdu.provenance import cpu_info
 
 if TYPE_CHECKING:
@@ -63,7 +63,21 @@ class PaddleOcr:
 
         start = time.perf_counter()
         pages = self._ocr.predict(np.array(image.convert("RGB")))
-        text = "\n".join(line for page in pages for line in page["rec_texts"])
-        result = OcrResult(text, self.name, time.perf_counter() - start, hardware=self.hardware)
+        latency = time.perf_counter() - start
+        lines = tuple(
+            OcrLine(text, round(float(score), 4), tuple(int(v) for v in box))
+            for page in pages
+            for text, score, box in zip(
+                page["rec_texts"], page["rec_scores"], page["rec_boxes"], strict=True
+            )
+        )
+        result = OcrResult(
+            "\n".join(line.text for line in lines),
+            self.name,
+            latency,
+            hardware=self.hardware,
+            lines=lines,
+            page_size=image.size,
+        )
         write_cache(path, result)
         return result
