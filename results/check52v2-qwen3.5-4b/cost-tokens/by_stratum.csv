@@ -1,0 +1,27 @@
+stratum,n,text,vision,hybrid,oracle,best_single,headroom
+ALL,52,0.5994,0.7873,0.7974,0.8450,hybrid,0.0476
+chartqa/augmented,8,0.7500,1.0000,1.0000,1.0000,vision,0.0000
+chartqa/human,5,0.4000,0.8000,0.8000,0.8000,vision,0.0000
+docvqa/Image/Photo,1,0.0000,1.0000,1.0000,1.0000,vision,0.0000
+docvqa/Yes/No,1,1.0000,1.0000,1.0000,1.0000,vision,0.0000
+docvqa/figure/diagram,1,1.0000,1.0000,1.0000,1.0000,vision,0.0000
+docvqa/form,2,1.0000,1.0000,1.0000,1.0000,vision,0.0000
+docvqa/free_text,2,1.0000,1.0000,1.0000,1.0000,vision,0.0000
+docvqa/handwritten,1,0.0000,1.0000,0.8571,1.0000,vision,0.0000
+docvqa/layout,2,0.5000,1.0000,1.0000,1.0000,vision,0.0000
+docvqa/others,1,1.0000,1.0000,1.0000,1.0000,vision,0.0000
+docvqa/table/list,2,1.0000,1.0000,1.0000,1.0000,vision,0.0000
+infographicvqa/arithmetic,2,0.0000,0.5000,0.5000,0.5000,vision,0.0000
+infographicvqa/comparison,2,0.5000,0.5000,0.5000,0.5000,vision,0.0000
+infographicvqa/counting,2,0.5000,0.5000,0.5000,0.5000,vision,0.0000
+infographicvqa/multi-span,2,0.5000,0.5000,0.5000,1.0000,vision,0.5000
+infographicvqa/non-extractive,1,0.0000,1.0000,1.0000,1.0000,vision,0.0000
+infographicvqa/question span,1,1.0000,1.0000,1.0000,1.0000,vision,0.0000
+infographicvqa/single span,3,0.6667,1.0000,1.0000,1.0000,vision,0.0000
+tatdqa/arithmetic,1,0.0000,0.0000,1.0000,1.0000,hybrid,0.0000
+tatdqa/count,1,1.0000,1.0000,0.0000,1.0000,vision,0.0000
+tatdqa/million,2,0.3333,0.5000,0.3333,0.5000,vision,0.0000
+tatdqa/multi-span,2,1.0000,1.0000,1.0000,1.0000,vision,0.0000
+tatdqa/percent,2,0.0000,0.0000,0.0000,0.0000,vision,0.0000
+tatdqa/span,3,0.8333,0.9804,0.9804,0.9804,vision,0.0000
+tatdqa/thousand,2,0.5000,0.0000,0.5000,0.5000,text,0.0000

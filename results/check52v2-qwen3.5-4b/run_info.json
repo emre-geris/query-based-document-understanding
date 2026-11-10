@@ -1,0 +1,119 @@
+{
+  "date": "2026-11-10T14:28:46",
+  "git_commit": "1a251667439182dbb5d222c4ebe4b5b93cdc8e7a",
+  "git_dirty": false,
+  "python": "3.13.16",
+  "platform": "Linux-6.6.159+-x86_64-with-glibc2.39",
+  "packages": {
+    "datasets": "5.1.0",
+    "openai": "3.41.0",
+    "pillow": "13.0.0",
+    "pytesseract": "0.3.13"
+  },
+  "text_model": "Qwen/Qwen3.5-4B",
+  "vision_model": "Qwen/Qwen3.5-4B",
+  "pipelines": [
+    "text",
+    "vision",
+    "hybrid"
+  ],
+  "ocr_engine": "paddleocr-3.7.0-ppocrv5-mobile",
+  "cpu": "Intel(R) Xeon(R) CPU @ 2.20GHz x 12",
+  "gpu": [
+    {
+      "name": "NVIDIA L4",
+      "memory": "23034 MiB",
+      "driver": "580.82.07",
+      "compute_capability": "8.9"
+    }
+  ],
+  "text_model_config": {
+    "provider": "openai_compat",
+    "base_url": "http://localhost:8000/v1",
+    "model": "Qwen/Qwen3.5-4B",
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "thinking_disabled": true,
+    "max_image_pixels": 16777216,
+    "server_args": "vllm serve Qwen/Qwen3.5-4B --port 8000 --dtype bfloat16 --max-model-len 32768 --gpu-memory-utilization 0.90 --limit-mm-per-prompt '{\"image\": 1}' --no-enable-prefix-caching --mm-processor-cache-gb 0",
+    "server_version": {
+      "version": "0.33.0"
+    },
+    "server_models": {
+      "object": "list",
+      "data": [
+        {
+          "id": "Qwen/Qwen3.5-4B",
+          "object": "model",
+          "created": 1794320926,
+          "owned_by": "vllm",
+          "root": "Qwen/Qwen3.5-4B",
+          "parent": null,
+          "max_model_len": 32768,
+          "permission": [
+            {
+              "id": "modelperm-88b0533e5d336146",
+              "object": "model_permission",
+              "created": 1794320926,
+              "allow_create_engine": false,
+              "allow_sampling": true,
+              "allow_logprobs": true,
+              "allow_search_indices": false,
+              "allow_view": true,
+              "allow_fine_tuning": false,
+              "organization": "*",
+              "group": null,
+              "is_blocking": false
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "vision_model_config": {
+    "provider": "openai_compat",
+    "base_url": "http://localhost:8000/v1",
+    "model": "Qwen/Qwen3.5-4B",
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "thinking_disabled": true,
+    "max_image_pixels": 16777216,
+    "server_args": "vllm serve Qwen/Qwen3.5-4B --port 8000 --dtype bfloat16 --max-model-len 32768 --gpu-memory-utilization 0.90 --limit-mm-per-prompt '{\"image\": 1}' --no-enable-prefix-caching --mm-processor-cache-gb 0",
+    "server_version": {
+      "version": "0.33.0"
+    },
+    "server_models": {
+      "object": "list",
+      "data": [
+        {
+          "id": "Qwen/Qwen3.5-4B",
+          "object": "model",
+          "created": 1794320926,
+          "owned_by": "vllm",
+          "root": "Qwen/Qwen3.5-4B",
+          "parent": null,
+          "max_model_len": 32768,
+          "permission": [
+            {
+              "id": "modelperm-8be4044c7e6f3075",
+              "object": "model_permission",
+              "created": 1794320926,
+              "allow_create_engine": false,
+              "allow_sampling": true,
+              "allow_logprobs": true,
+              "allow_search_indices": false,
+              "allow_view": true,
+              "allow_fine_tuning": false,
+              "organization": "*",
+              "group": null,
+              "is_blocking": false
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "manifest": "benchmarks/check_52.csv",
+  "manifest_sha256": "b691cc99a875335e5ac6036e8b8337de34c0e86bd48e6bbdfc667304983b9a80",
+  "questions": 52
+}

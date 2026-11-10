@@ -1,0 +1,6 @@
+dataset,n,text,vision,hybrid,oracle,best_single,headroom
+ALL,52,0.5994,0.7873,0.7974,0.8450,hybrid,0.0476
+chartqa,13,0.6154,0.9231,0.9231,0.9231,vision,0.0000
+docvqa,13,0.7692,1.0000,0.9890,1.0000,vision,0.0000
+infographicvqa,13,0.4615,0.6923,0.6923,0.7692,vision,0.0769
+tatdqa,13,0.5513,0.5339,0.5852,0.6878,hybrid,0.1026
