@@ -331,10 +331,14 @@ def format_summary(summary: OracleSummary, label: str = "stratum") -> str:
 
 
 def format_metrics(metrics: list[MetricRow]) -> str:
-    """Quality and cost per dataset and pipeline; relaxed accuracy matters for ChartQA."""
+    """Quality and cost per dataset and pipeline; relaxed accuracy matters for ChartQA.
+
+    Cost columns: C s (OCR paid per question), B s (OCR shared by a page's questions) and the
+    tokens of scenario A.
+    """
     lines = [
         f"  {'dataset':<16}{'pipeline':<9}{'n':>5}{'ANLS':>8}{'relaxed':>9}{'EM':>7}{'F1':>7}"
-        f"{'model s':>9}{'OCR s':>8}{'total s':>9}{'in tok':>9}{'out tok':>9}"
+        f"{'model s':>9}{'OCR s':>8}{'C s':>8}{'B s':>8}{'in tok':>9}{'out tok':>9}"
     ]
     for m in metrics:
         tokens_in = f"{m.input_tokens:>9.0f}" if m.input_tokens is not None else f"{'-':>9}"
@@ -342,6 +346,7 @@ def format_metrics(metrics: list[MetricRow]) -> str:
         lines.append(
             f"  {m.dataset:<16}{m.pipeline:<9}{m.n:>5}{m.anls:>8.3f}{m.relaxed_accuracy:>9.3f}"
             f"{m.exact_match:>7.3f}{m.f1:>7.3f}"
-            f"{m.model_s:>9.2f}{m.ocr_s:>8.2f}{m.total_s:>9.2f}{tokens_in}{tokens_out}"
+            f"{m.model_s:>9.2f}{m.ocr_s:>8.2f}{m.total_s:>8.2f}{m.total_shared_s:>8.2f}"
+            f"{tokens_in}{tokens_out}"
         )
     return "\n".join(lines)

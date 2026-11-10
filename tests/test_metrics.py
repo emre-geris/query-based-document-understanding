@@ -31,6 +31,7 @@ def test_relaxed_match(prediction: str, answers: list[str], expected: bool) -> N
 def row(qid: str, pipeline: str, prediction: str, anls: float, model_s: float, ocr_s=None):
     return {
         "question_id": qid,
+        "doc_id": "chartqa/page",  # both questions ask about the same page
         "pipeline": pipeline,
         "prediction": prediction,
         "answers": ["100"],
@@ -56,6 +57,8 @@ def test_metric_table_reports_cost_per_pipeline_and_oracle() -> None:
     text = table[("chartqa", "text")]
     assert (text.n, text.anls, text.relaxed_accuracy) == (2, 0.5, 1.0)
     assert (text.model_s, text.ocr_s, text.total_s) == (1.0, 0.5, 1.5)
+    assert text.total_shared_s == 1.25  # scenario B: the page's OCR is shared by 2 questions
+    assert table[("chartqa", "vision")].total_shared_s == 3.0
     oracle = table[("chartqa", "oracle")]
     assert oracle.anls == 1.0
     assert oracle.total_s == pytest.approx((3.0 + 1.5) / 2)
