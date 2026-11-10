@@ -2077,6 +2077,7 @@ dependencies = [
     { name = "datasets" },
     { name = "openai" },
     { name = "pillow" },
+    { name = "pypdfium2" },
     { name = "pytesseract" },
 ]
 
@@ -2100,6 +2101,7 @@ requires-dist = [
     { name = "paddleocr", marker = "extra == 'paddle'", specifier = ">=3.7.0" },
     { name = "paddlepaddle", marker = "extra == 'paddle'", specifier = "==3.2.2" },
     { name = "pillow", specifier = ">=12.3.0" },
+    { name = "pypdfium2", specifier = ">=5.14.0" },
     { name = "pytesseract", specifier = ">=0.3.13" },
 ]
 provides-extras = ["paddle"]

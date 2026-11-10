@@ -1,3 +1,4 @@
+import io
 import json
 import zipfile
 from pathlib import Path
@@ -50,8 +51,12 @@ def tatdqa_files(tmp_path: Path) -> tuple[Path, Path]:
     with zipfile.ZipFile(zip_path, "w") as z:
         for uid, layout in layouts.items():
             z.writestr(f"test/{uid}.json", json.dumps(layout))
-            for page in range(1, len(layout["pages"]) + 1):
-                z.writestr(f"test/{uid}_{page}.png", png_bytes(render_page(f"{uid[0]} p{page}")))
+            pages = [render_page(f"{uid[0]} p{n}") for n in range(1, len(layout["pages"]) + 1)]
+            for n, page in enumerate(pages, start=1):  # the release's 224 x 224 thumbnails
+                z.writestr(f"test/{uid}_{n}.png", png_bytes(page.resize((224, 224))))
+            pdf = io.BytesIO()  # 800 x 200 px pages at 72 dpi -> 800 x 200 pt
+            pages[0].save(pdf, format="PDF", save_all=True, append_images=pages[1:])
+            z.writestr(f"test/{uid}.pdf", pdf.getvalue())
     return gold_path, zip_path
 
 
@@ -86,4 +91,9 @@ def test_tatdqa_records_are_test_only(tatdqa_files) -> None:
     assert q2.doc_id == f"tatdqa/{'b' * 32}_p2"
     assert q2.question_types == ("arithmetic", "thousand")
     image = ImageStore({"tatdqa": dataset}).get(q2)
-    assert image.size == (800, 200)
+    # rendered from the PDF at 200 dpi, not the 224 x 224 thumbnail
+    assert abs(image.size[0] - 800 * 200 / 72) <= 2 and abs(image.size[1] - 200 * 200 / 72) <= 2
+    page1 = ImageStore({"tatdqa": dataset}).get(
+        next(r for r in records if r.question_id == "tatdqa/q1")
+    )
+    assert page1.size == image.size

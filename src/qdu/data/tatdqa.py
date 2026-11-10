@@ -1,7 +1,9 @@
 """TAT-DQA (test) as a page-level QA dataset.
 
 The official release ships a gold JSON and a zip with, per document, the PDF, page PNGs
-(``<uid>_<page>.png``) and a JSON of text blocks per page. Every question is mapped to the
+(``<uid>_<page>.png``) and a JSON of text blocks per page. The PNGs are 224 x 224 thumbnails,
+unreadable for OCR or a VLM, so pages are rendered from the PDF at ``RENDER_DPI`` instead
+(an A4 page becomes 1653 x 2339 pixels, comparable to DocVQA scans). Every question is mapped to the
 single page that holds its evidence (the page of its ``block_mapping`` blocks), so it fits the
 same one-page pipelines as the other datasets. Questions whose evidence spans two pages are
 skipped; :func:`build_tatdqa` reports how many.
@@ -11,6 +13,7 @@ numeric scale) differs from ANLS; numeric gold answers are rounded to two decima
 official evaluation.
 """
 
+import io
 import json
 import zipfile
 from collections.abc import Iterator
@@ -23,6 +26,21 @@ if TYPE_CHECKING:
 HF_REPO = "next-tat/TAT-DQA"
 GOLD_FILE = "tatdqa_dataset_test_gold.json"
 DOCS_FILE = "tatdqa_docs_test.zip"
+RENDER_DPI = 200
+
+
+def render_page(pdf: bytes, page: int, dpi: int = RENDER_DPI) -> bytes:
+    """PNG bytes of 1-based ``page`` of a PDF, rendered at ``dpi``."""
+    import pypdfium2 as pdfium
+
+    document = pdfium.PdfDocument(pdf)
+    try:
+        image = document[page - 1].render(scale=dpi / 72).to_pil().convert("RGB")
+    finally:
+        document.close()
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 def format_answer(answer: Any) -> list[str]:
@@ -56,11 +74,14 @@ def iter_rows(gold_path: Path, docs_zip: Path, stats: dict[str, int]) -> Iterato
                 for number, page in enumerate(layout["pages"], start=1)
                 for block in page["blocks"]
             }
+            pages: dict[int, bytes] = {}  # rendered once per page, shared by its questions
             for q in entry["questions"]:
                 page = 1 if entry["doc"]["page"] == 1 else _evidence_page(q, block_pages)
                 if page is None:
                     stats["skipped_multi_page"] = stats.get("skipped_multi_page", 0) + 1
                     continue
+                if page not in pages:
+                    pages[page] = render_page(z.read(f"test/{uid}.pdf"), page)
                 stats["questions"] = stats.get("questions", 0) + 1
                 yield {
                     "uid": q["uid"],
@@ -70,7 +91,7 @@ def iter_rows(gold_path: Path, docs_zip: Path, stats: dict[str, int]) -> Iterato
                     "answers": format_answer(q["answer"]),
                     "answer_type": q.get("answer_type") or "",
                     "scale": q.get("scale") or "",
-                    "image": {"bytes": z.read(f"test/{uid}_{page}.png"), "path": None},
+                    "image": {"bytes": pages[page], "path": None},
                 }
 
 

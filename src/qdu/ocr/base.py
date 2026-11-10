@@ -51,12 +51,17 @@ class OcrResult:
     """Width and height of the page the boxes refer to."""
 
 
-def read_cache(path: Path | None) -> OcrResult | None:
+def read_cache(path: Path | None, size: tuple[int, int] | None = None) -> OcrResult | None:
+    """The cached result, or None. With ``size``, an entry recorded for a page of another size
+    counts as missing, so a page whose image changed (e.g. TAT-DQA moving from thumbnails to
+    PDF renders) is OCR'd again instead of reusing stale text and time."""
     if path is None or not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
     lines = data.get("lines")
-    size = data.get("page_size")
+    page_size = data.get("page_size")
+    if size is not None and page_size is not None and tuple(page_size) != tuple(size):
+        return None
     return OcrResult(
         data["text"],
         data["engine"],
@@ -64,7 +69,7 @@ def read_cache(path: Path | None) -> OcrResult | None:
         cached=True,
         hardware=data.get("hardware"),
         lines=None if lines is None else tuple(OcrLine(t, s, tuple(b)) for t, s, b in lines),
-        page_size=None if size is None else tuple(size),
+        page_size=None if page_size is None else tuple(page_size),
     )
 
 

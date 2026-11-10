@@ -56,11 +56,12 @@ class TesseractOcr:
 
     def extract(self, image: "Image", key: str) -> OcrResult:
         path = self._cache_path(key)
-        if (cached := read_cache(path)) is not None:
+        if (cached := read_cache(path, image.size)) is not None:
             return cached
 
         start = time.perf_counter()
         text = self._pytesseract.image_to_string(image, lang=self.lang, config=f"--psm {self.psm}")
-        result = OcrResult(text, self.name, time.perf_counter() - start, hardware=self.hardware)
+        latency = time.perf_counter() - start
+        result = OcrResult(text, self.name, latency, hardware=self.hardware, page_size=image.size)
         write_cache(path, result)
         return result

@@ -100,3 +100,13 @@ def test_cache_keeps_lines_boxes_and_page_size(tmp_path) -> None:
     assert (cached.lines, cached.page_size, cached.hardware) == (lines, (700, 300), "cpu x 2")
     write_cache(tmp_path / "t.json", OcrResult("x", "tesseract", 0.1))
     assert read_cache(tmp_path / "t.json").lines is None  # engines without boxes
+
+
+def test_cache_entry_for_a_different_page_size_is_ignored(tmp_path) -> None:
+    from qdu.ocr.base import OcrResult, read_cache, write_cache
+
+    write_cache(tmp_path / "p.json", OcrResult("old", "e", 0.1, page_size=(224, 224)))
+    assert read_cache(tmp_path / "p.json", (224, 224)) is not None
+    assert read_cache(tmp_path / "p.json", (1653, 2339)) is None  # the page image changed
+    write_cache(tmp_path / "legacy.json", OcrResult("old", "e", 0.1))
+    assert read_cache(tmp_path / "legacy.json", (1653, 2339)) is not None  # size unknown

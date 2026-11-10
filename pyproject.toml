@@ -9,6 +9,7 @@ dependencies = [
     "datasets>=5.0.1",
     "openai>=3.41.0",
     "pillow>=12.3.0",
+    "pypdfium2>=5.14.0",
     "pytesseract>=0.3.13",
 ]
 

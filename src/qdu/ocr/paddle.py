@@ -64,7 +64,7 @@ class PaddleOcr:
 
     def extract(self, image: "Image", key: str) -> OcrResult:
         path = self._cache_path(key)
-        if (cached := read_cache(path)) is not None:
+        if (cached := read_cache(path, image.size)) is not None:
             return cached
 
         import numpy as np
