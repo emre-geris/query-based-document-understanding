@@ -167,7 +167,7 @@ def run(
     *,
     text_model: LanguageModel,
     vision_model: LanguageModel,
-    ocr: OcrEngine,
+    ocr: OcrEngine | None,
     pipelines: Sequence[str] = DEFAULT_COST_ORDER,
     manifest: Path = DEFAULT_MANIFEST,
     limit: int | None = None,
@@ -185,7 +185,7 @@ def run(
         text_model=text_model.name,
         vision_model=vision_model.name,
         pipelines=list(pipelines),
-        ocr_engine=ocr.name,
+        ocr_engine=ocr.name if ocr else None,
         cpu=cpu_info(),  # cached OCR times carry their own hardware in each row
         gpu=gpu_info(),
         text_model_config=_describe(text_model),
@@ -195,6 +195,10 @@ def run(
         questions=len(records),
     )
     (run_dir / "run_info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+    # A long run spans several sessions (resumes, or vision first and text/hybrid later);
+    # run_info.json describes the latest, run_history.jsonl keeps every one.
+    with (run_dir / "run_history.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(info) + "\n")
 
     images = ImageStore(loaded)
     return run_pipelines(records, images.get, built, run_dir / "predictions.jsonl", on_row=on_row)

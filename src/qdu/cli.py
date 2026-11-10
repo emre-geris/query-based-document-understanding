@@ -104,7 +104,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         run_dir,
         text_model=create_model(args.text_model),
         vision_model=create_model(args.vision_model),
-        ocr=_ocr(args.ocr, args.psm, args.ocr_cache),
+        # vision alone needs no OCR engine (nor PaddleOCR installed)
+        ocr=_ocr(args.ocr, args.psm, args.ocr_cache) if {"text", "hybrid"} & set(names) else None,
         pipelines=names,
         manifest=args.manifest,
         limit=args.limit,

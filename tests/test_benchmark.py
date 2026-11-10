@@ -89,6 +89,8 @@ def test_run_and_report(tmp_path: Path, fake_docvqa) -> None:
     assert (first.completed, first.failed) == (36, 0)
     assert run().skipped == 36  # resumable
     assert json.loads((run_dir / "run_info.json").read_text())["text_model"] == "text-fake"
+    history = (run_dir / "run_history.jsonl").read_text().splitlines()
+    assert len(history) == 2  # one entry per session
 
     result = benchmark.report(run_dir)
     summary, by_dataset = result.by_stratum, result.by_dataset
