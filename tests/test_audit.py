@@ -73,3 +73,8 @@ def test_inconsistent_costs_and_scores_are_reported(tmp_path: Path) -> None:
     assert "pages with different OCR time" in joined
     assert "vision row carries OCR cost" in joined
     assert "1 failed calls" in lines[0]
+
+
+def test_empty_or_missing_run_is_a_problem(tmp_path: Path) -> None:
+    _, problems = audit(tmp_path / "does-not-exist")
+    assert any("no successful predictions" in p for p in problems)

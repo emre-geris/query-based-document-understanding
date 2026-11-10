@@ -43,6 +43,8 @@ def audit(run_dir: Path, *, examples: int = 3) -> tuple[list[str], list[str]]:
         f"rows {len(rows)}: {len(latest)} successful (question, pipeline) pairs, "
         f"{len(errors)} failed calls, {retried} duplicate successes"
     )
+    if not latest:
+        problems.append(f"no successful predictions in {run_dir} (wrong path or empty run?)")
     if retried:
         problems.append(f"{retried} (question, pipeline) pairs were answered more than once")
     for r in errors[:5]:
