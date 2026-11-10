@@ -5,13 +5,30 @@ from pathlib import Path
 from qdu.ocr.base import OcrEngine, OcrResult
 from qdu.ocr.tesseract import TesseractOcr, find_tesseract
 
-OCR_SPECS = ("tesseract", "paddle-mobile", "paddle-server")
+OCR_SPECS = (
+    "tesseract",
+    "paddle-mobile",
+    "paddle-server",
+    "rapid-mobile",
+    "rapid-server",
+    "rapid-mobile-gpu",
+    "rapid-server-gpu",
+)
 
 
 def create_ocr(spec: str, cache_dir: Path | None = None, psm: int = 3) -> OcrEngine:
-    """Build an OCR engine from a spec: ``tesseract``, ``paddle-mobile`` or ``paddle-server``."""
+    """Build an OCR engine from a spec in :data:`OCR_SPECS`.
+
+    ``paddle-*`` is PaddleOCR (PP-OCRv5), ``rapid-*`` the same models on ONNX Runtime via
+    RapidOCR; a ``-gpu`` suffix runs RapidOCR on the GPU.
+    """
     if spec == "tesseract":
         return TesseractOcr(psm=psm, cache_dir=cache_dir)
+    if spec.startswith("rapid-"):
+        from qdu.ocr.rapid import RapidOcr
+
+        model = spec.removeprefix("rapid-").removesuffix("-gpu")
+        return RapidOcr(model, cache_dir=cache_dir, gpu=spec.endswith("-gpu"))
     if spec.startswith("paddle-"):
         from qdu.ocr.paddle import PaddleOcr
 

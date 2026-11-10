@@ -110,3 +110,12 @@ def test_cache_entry_for_a_different_page_size_is_ignored(tmp_path) -> None:
     assert read_cache(tmp_path / "p.json", (1653, 2339)) is None  # the page image changed
     write_cache(tmp_path / "legacy.json", OcrResult("old", "e", 0.1))
     assert read_cache(tmp_path / "legacy.json", (1653, 2339)) is not None  # size unknown
+
+
+def test_long_cache_keys_are_shortened(tmp_path) -> None:
+    from qdu.ocr.base import cache_file
+
+    key = "infographicvqa/" + "x" * 120 + ".jpg"
+    path = cache_file(tmp_path, key)
+    assert len(path.name) < 100
+    assert path != cache_file(tmp_path, key + "2")

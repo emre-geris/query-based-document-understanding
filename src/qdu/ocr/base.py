@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 # Characters Windows does not allow in file names ("/" separates cache sub-directories).
 _UNSAFE = re.compile(r'[<>:"\\|?*\x00-\x1f]')
+_MAX_KEY = 80
 
 
 def cache_file(cache_dir: Path, key: str) -> Path:
@@ -20,8 +21,8 @@ def cache_file(cache_dir: Path, key: str) -> Path:
     map to ``<key>.json`` unchanged, so existing caches stay valid.
     """
     safe = _UNSAFE.sub("_", key)
-    if safe != key:
-        safe += "-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:8]
+    if safe != key or len(safe) > _MAX_KEY:  # long names also break Windows' 260-char paths
+        safe = safe[:_MAX_KEY] + "-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:8]
     return cache_dir / f"{safe}.json"
 
 
