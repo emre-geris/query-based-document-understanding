@@ -58,6 +58,11 @@ class RapidOcr:
         }
         if gpu:
             params["EngineConfig.onnxruntime.cuda_ep_cfg.cudnn_conv_algo_search"] = "HEURISTIC"
+            # Grow GPU memory by what is requested, not to the next power of two: next to vLLM
+            # the doubling ran out of memory on a large page (Colab L4, page 315 of full.csv).
+            params["EngineConfig.onnxruntime.cuda_ep_cfg.arena_extend_strategy"] = (
+                "kSameAsRequested"
+            )
         self._ocr = RapidOCR(params=params)
         self.model = model
         suffix = "-gpu" if gpu else ""
