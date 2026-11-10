@@ -25,6 +25,11 @@ rapid = [
     "onnxruntime>=1.31.1",
     "rapidocr>=3.10.0",
 ]
+# The same with CUDA (Colab GPU runs): onnxruntime-gpu replaces onnxruntime.
+rapid-gpu = [
+    "onnxruntime-gpu>=1.31.1",
+    "rapidocr>=3.10.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.9,<0.14"]
@@ -32,6 +37,8 @@ build-backend = "uv_build"
 
 [tool.uv]
 required-version = ">=0.13"
+# onnxruntime and onnxruntime-gpu install the same module
+conflicts = [[{ extra = "rapid" }, { extra = "rapid-gpu" }]]
 
 [tool.uv.build-backend]
 module-name = "qdu"
