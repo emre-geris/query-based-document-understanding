@@ -6,10 +6,15 @@ unwarping and text-line orientation are off: benchmark pages are upright scans a
 
 On Windows the oneDNN CPU backend fails on PP-OCRv5's graph ("ConvertPirAttribute2Runtime-
 Attribute not support"), so oneDNN is disabled there; this makes CPU inference much slower
-(~24 s per page on a laptop) but correct. Elsewhere (Linux, Colab) oneDNN stays on. The
-engine name records which, since the setting changes the measured OCR time.
+(~24 s per page on a laptop) but correct. Elsewhere (Linux, Colab) oneDNN stays on unless
+``QDU_PADDLE_MKLDNN=0``. The engine name records which, since the setting changes the measured
+OCR time.
+
+The first prediction pays one-off initialisation, so the engine runs once on a blank page
+when it is built; otherwise the first page of every session would report an inflated time.
 """
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -35,7 +40,7 @@ class PaddleOcr:
             raise RuntimeError("PaddleOCR is not installed: run `uv sync --extra paddle`") from exc
 
         prefix = f"PP-OCRv5_{model}"
-        mkldnn = sys.platform != "win32"
+        mkldnn = sys.platform != "win32" and os.environ.get("QDU_PADDLE_MKLDNN", "1") != "0"
         self._ocr = PaddleOCR(
             text_detection_model_name=f"{prefix}_det",
             text_recognition_model_name=f"{prefix}_rec",
@@ -50,6 +55,10 @@ class PaddleOcr:
         )
         self.hardware = cpu_info()
         self.cache_dir = cache_dir / f"paddle-{model}" if cache_dir else None
+
+        import numpy as np
+
+        self._ocr.predict(np.full((64, 256, 3), 255, dtype=np.uint8))  # warm-up, not timed
 
     def _cache_path(self, key: str) -> Path | None:
         return cache_file(self.cache_dir, key) if self.cache_dir else None
