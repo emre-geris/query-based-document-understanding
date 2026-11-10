@@ -93,7 +93,7 @@ uv run qdu benchmark rescore runs/<run-name>                       # re-derive a
 
 ### Running on a GPU (Colab)
 
-Open `notebooks/gpu_pilot.ipynb` in Google Colab (runtime **L4** or **A100**; Qwen3.5 failed to start on a T4 in our attempt) and run the cells top to bottom. It serves Qwen3.5-4B with vLLM on the same machine (caches off, launch flags recorded with the run), runs `MANIFEST` with `--text-model openai:Qwen/Qwen3.5-4B --vision-model openai:Qwen/Qwen3.5-4B`, and zips the run for download. The `openai:<model>` provider reads `QDU_OPENAI_BASE_URL` (default `http://localhost:8000/v1`).
+For a long manifest, first fill the OCR cache on a Colab CPU runtime with `notebooks/ocr_prepass.ipynb` (`qdu ocr warm`); the vision path does not need it and can run meanwhile. Then open `notebooks/gpu_run.ipynb` in Google Colab (runtime **L4** or **A100**; Qwen3.5 failed to start on a T4 in our attempt) and run the cells top to bottom. It serves Qwen3.5-4B with vLLM on the same machine (caches off, launch flags recorded with the run), runs `MANIFEST` with `--text-model openai:Qwen/Qwen3.5-4B --vision-model openai:Qwen/Qwen3.5-4B`, and zips the run for download. The `openai:<model>` provider reads `QDU_OPENAI_BASE_URL` (default `http://localhost:8000/v1`).
 
 `uv run qdu --help` lists all options. The `fake` model spec only exercises the wiring; its
 answers are meaningless and must never be reported.

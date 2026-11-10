@@ -47,7 +47,8 @@ Never use `pip install` or edit `uv.lock` by hand.
 - Primary development is on Windows. Tesseract is expected on `PATH` or at `C:\Program Files\Tesseract-OCR\tesseract.exe`.
 - Datasets are downloaded by `qdu data download` into the user's Hugging Face cache (`~/.cache/huggingface`), never into the repo.
 - Keep the virtual environment outside OneDrive: set `UV_PROJECT_ENVIRONMENT` (e.g. `C:\Users\<you>\venvs\qdu`) before `uv sync`.
-- No local GPU. Qwen3.5 runs behind a vLLM OpenAI-compatible server on a **Colab L4** (paid compute units) via `notebooks/gpu_pilot.ipynb`; benchmark runs execute on that machine against `localhost` so measured latency excludes network time. Everything else runs on a laptop.
+- No local GPU. Qwen3.5 runs behind a vLLM OpenAI-compatible server on a **Colab L4** (paid compute units) via `notebooks/gpu_run.ipynb`; benchmark runs execute on that machine against `localhost` so measured latency excludes network time. OCR for long runs is cached beforehand on a Colab CPU runtime (`notebooks/ocr_prepass.ipynb`, `qdu ocr warm`). Both keep their outputs on Google Drive, since a Colab disk is lost on disconnect. Everything else runs on a laptop.
+- PP-OCRv5 on Windows runs with oneDNN off (it crashes otherwise), ~24 s per page: fine for small comparisons, not for full manifests.
 - Qwen3.5 on vLLM 0.32 **failed to start on a T4** in our attempt (engine init error on compute capability 7.5, 30 Oct 2026; root cause not isolated), so we use an L4.
 - Qwen3.5 thinks by default. Every request must disable it (`chat_template_kwargs: {enable_thinking: false}`); otherwise answers, latency and token cost are all distorted.
 - Stop the vLLM server with `pkill -f "^/usr/bin/python3 /usr/local/bin/vllm"`; an unanchored `pkill -f "vllm serve"` also matches and kills the shell that runs it.
@@ -83,7 +84,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 ### Phase 1 — Pilot & go/no-go (H3–H4, decision **30 Oct**)
 - [x] R · vLLM server for **Qwen3.5-4B** on a Colab L4 (bf16, thinking off, caches off); starts in ~7 min. Qwen3.5-9B only if the pilot justifies it
 - [x] R/E · `openai_compat` provider in `qdu.models` (vLLM endpoint, thinking disabled, token usage, timeouts, retries)
-- [x] R/E · GPU runbook `notebooks/gpu_pilot.ipynb` (Colab L4/A100; a T4 failed): vLLM + Qwen3.5-4B, data, smoke test, run on `MANIFEST`, report
+- [x] R/E · GPU runbook `notebooks/gpu_run.ipynb` (Colab L4/A100; a T4 failed): vLLM + Qwen3.5-4B, data, smoke test, run on `MANIFEST`, report
 - [x] H · Dataset registry (`qdu.data.sources`): DocVQA, InfographicVQA, ChartQA on the same `QARecord`; `qdu data download`
 - [x] H · Document-level train / val / test splits (hash-based, `qdu.data.splits`); prerequisite for drawing the pilot from the router-train split
 - [x] H · Download the pilot datasets (`qdu data download`): DocVQA 5,349 q / 1,286 docs, InfographicVQA 2,801 / 500, ChartQA 2,500 / 1,509
@@ -97,12 +98,15 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 ### Phase 2 — Data & labels (H4–H7)
 - [x] H · Download TAT-DQA test files (`tatdqa_docs_test.zip`, `tatdqa_dataset_test_gold.json`) into the HF cache
 - [x] H · TAT-DQA loader (`qdu.data.tatdqa`): each question mapped to its evidence page from `block_mapping`; cross-page questions skipped; router split fixed to `test`
-- [ ] R · Batch labelling: every question of DocVQA, InfographicVQA, ChartQA (all splits: test labels are needed to score baselines) and TAT-DQA × 3 paths on a Colab L4; manifests from `qdu benchmark sample --all-questions --split all`, new `--name` per run, resumable, cost logged. Pilot rate ≈ 26 calls/min at 4 MP, so ~12k questions ≈ 36k calls ≈ 25 h of L4 or more with the model-native image cap; start with a smoke test on the largest pages
+- [x] E · Full labelling manifest `benchmarks/full.csv`: every question of the four datasets, all router splits (test labels are needed to score baselines): 12,305 questions on 3,586 pages; smoke manifest of the 15 largest pages `benchmarks/smoke_largest.csv` (`qdu benchmark largest`)
+- [x] E · Run preparation: model latency excludes client-side image encoding; OCR engine per run (`--ocr`), OCR pre-pass (`qdu ocr warm`) with the CPU recorded per page; vision-only sessions need no OCR; one `run_history.jsonl` entry per session; runbooks keep everything on Google Drive
+- [ ] H · OCR pre-pass on a Colab CPU runtime: PP-OCRv5 mobile on the 3,586 pages of `full.csv` (`notebooks/ocr_prepass.ipynb`)
+- [ ] R · Batch labelling on a Colab L4, run `full-qwen3.5-4b`, sequential calls: stage 1 `--pipelines vision` (12,305 calls, can run during the OCR pre-pass), stage 2 `--pipelines text,hybrid` (24,610 calls) after it; smoke test on `smoke_largest.csv` first. Rough estimate 6–10 h + 8–12 h of L4
 - [ ] E · Label table: per question and path → primary score, cost; oracle label at chosen tolerance
 
 ### Phase 3 — Signals (H5–H7)
-- [ ] H · Compare Tesseract vs PP-OCRv5 on the 300 pilot pages (answer coverage in OCR text, time); pilot text ANLS is low partly because of OCR quality
-- [ ] H · OCR with word boxes + confidences: Tesseract 5 (`image_to_data`, cheap baseline) and a PaddleOCR 3.x / PP-OCRv5 backend; choose by accuracy vs. time, since OCR time counts as cost
+- [x] H · Compare Tesseract vs PP-OCRv5 on the 300 pilot pages (`qdu ocr compare`, laptop CPU). Answer coverage in the OCR text: Tesseract 0.42, PP-OCRv5 mobile 0.63 (DocVQA 0.65 → 0.72, InfographicVQA 0.34 → 0.51, ChartQA 0.28 → 0.67); 80 pages where only PP-OCRv5 keeps the answer, 17 where only Tesseract does. Time per page 0.6 s vs 24 s, the latter with oneDNN off on Windows, so not representative; the full run measures PP-OCRv5 on Linux. PP-OCRv5 server skipped: several times slower on CPU, and mobile already settles the choice
+- [ ] H · OCR with word boxes + confidences: PP-OCRv5 lines (text, confidence, box) and the page size are stored in the OCR cache (`OcrResult.lines`), so the full-run pre-pass already provides them; Tesseract 5 `image_to_data` still to add for the cheap baseline
 - [ ] H · Layout detection with PP-DocLayout (PaddleOCR 3.x; S/M variant first for speed, V3 if accuracy needs it): text / table / figure regions per page, cached; its time is reported next to the < 50 ms router decision time
 - [ ] H · S1 question features (wh-type, numeric/visual cue words, length, TF-IDF)
 - [ ] H · S2 OCR-text features (word count, mean/low confidence share, numeric density)
@@ -140,5 +144,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - vLLM runs with prefix caching and the multimodal processor cache **off** (`--no-enable-prefix-caching --mm-processor-cache-gb 0`). The smoke test showed hybrid calls 3x faster than vision calls on the same page despite more input tokens, because the image was cached by the preceding vision call; with caches on, measured latency is not a fair cost.
 - Cost is reported two ways: latency (model + OCR seconds; hardware-specific, what self-hosting pays) and tokens (input + output; API-price proxy, OCR free). Conclusions that hold under only one measure must say so.
 - Router cost includes the router's own work. S2–S4 need OCR and layout, so a router that runs them on every question pays OCR even when it then picks vision; the pilot oracle (no signal cost) is therefore optimistic. Three scenarios are reported for every method: **C** end-to-end per question, including signal computation (primary: the presentation claims OCR-inclusive cost as a gap we fill); **B** OCR and layout run once per document at ingestion and shared by its questions (realistic for document archives); **A** tokens only (API pricing, comparable to the literature). Success claims state which scenario they hold in; the target is C. Decided 30 Oct 2026.
+- OCR for the full run is **PP-OCRv5 mobile** instead of Tesseract (Nov 2026): it keeps the gold answer on 63% of pilot pages against 42%, and the text path cannot answer what OCR misses. Tesseract stays available (`--ocr tesseract`) as the cheap baseline. OCR time is measured once per page in a CPU pre-pass and every row records the CPU (`ocr_hardware`); scenario C charges it to every question, B divides it among the page's questions (`total_shared_s` in metrics.csv).
+- Model latency is the server round trip only: resizing and PNG-encoding the page on the client is done before the clock starts (it inflated vision and hybrid latency in the pilot by the encoding time).
 - Answers are normalised by `clean_answer` for every path (multi-line lists joined with commas, prefixes, quotes, final period, space thousands separators). After changing it, re-derive finished runs with `qdu benchmark rescore` instead of re-running the GPU.
 - The pilot samples from the router-train split, so pilot labels can be reused for router training without leaking val/test documents.
