@@ -120,8 +120,9 @@ def audit(run_dir: Path, *, examples: int = 3) -> tuple[list[str], list[str]]:
             "total_shared_s": _mean([m + o for m, o in zip(model, shared, strict=True)]),
         }
         table[(dataset, p)] = row
+        metric = primary_metric(dataset).split("_")[0]
         lines.append(
-            f"  {dataset:<16}{p:<9}{len(rs):>4}{primary_metric(dataset).split('_')[0]:>9}{row['score']:>8.3f}"
+            f"  {dataset:<16}{p:<9}{len(rs):>4}{metric:>9}{row['score']:>8.3f}"
             f"{row['model_s']:>9.2f}{row['ocr_s']:>8.2f}{row['total_s']:>8.2f}"
             f"{row['total_shared_s']:>8.2f}{_mean([r['input_tokens'] for r in rs]):>8.0f}"
             f"{_mean([r['output_tokens'] for r in rs]):>8.1f}"
