@@ -10,6 +10,10 @@ so the ``paddle`` extra pins paddlepaddle 3.2.2, where it works. ``QDU_PADDLE_MK
 oneDNN off; the engine name then ends in ``-nomkldnn``, since the setting changes the measured
 OCR time.
 
+``QDU_PADDLE_DEVICE=gpu`` runs it on the GPU (needs the paddlepaddle-gpu build instead of
+paddlepaddle). GPU results get their own engine name (``-gpu``), cache directory and hardware
+record (the GPU's name), so CPU and GPU OCR times are never mixed.
+
 The first prediction pays one-off initialisation, so the engine runs once on a blank page
 when it is built; otherwise the first page of every session would report an inflated time.
 """
@@ -20,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from qdu.ocr.base import OcrLine, OcrResult, cache_file, read_cache, write_cache
-from qdu.provenance import cpu_info
+from qdu.provenance import cpu_info, gpu_info
 
 if TYPE_CHECKING:
     from PIL.Image import Image
@@ -39,7 +43,9 @@ class PaddleOcr:
             raise RuntimeError("PaddleOCR is not installed: run `uv sync --extra paddle`") from exc
 
         prefix = f"PP-OCRv5_{model}"
-        mkldnn = os.environ.get("QDU_PADDLE_MKLDNN", "1") != "0"
+        device = os.environ.get("QDU_PADDLE_DEVICE", "cpu")
+        gpu = device.startswith("gpu")
+        mkldnn = not gpu and os.environ.get("QDU_PADDLE_MKLDNN", "1") != "0"
         self._ocr = PaddleOCR(
             text_detection_model_name=f"{prefix}_det",
             text_recognition_model_name=f"{prefix}_rec",
@@ -47,13 +53,15 @@ class PaddleOcr:
             use_doc_unwarping=False,
             use_textline_orientation=False,
             enable_mkldnn=mkldnn,
+            device=device,
         )
         self.model = model
-        self.name = f"paddleocr-{paddleocr.__version__}-ppocrv5-{model}" + (
-            "" if mkldnn else "-nomkldnn"
-        )
-        self.hardware = cpu_info()
-        self.cache_dir = cache_dir / f"paddle-{model}" if cache_dir else None
+        suffix = "-gpu" if gpu else ("" if mkldnn else "-nomkldnn")
+        self.name = f"paddleocr-{paddleocr.__version__}-ppocrv5-{model}{suffix}"
+        gpus = gpu_info() if gpu else None
+        self.hardware = gpus[0]["name"] if gpus else cpu_info()
+        folder = f"paddle-{model}" + ("-gpu" if gpu else "")
+        self.cache_dir = cache_dir / folder if cache_dir else None
 
         import numpy as np
 
