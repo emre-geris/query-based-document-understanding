@@ -16,10 +16,10 @@ def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-")
 
 
-def _ocr(psm: int, cache_dir: Path | None):
-    from qdu.ocr import TesseractOcr
+def _ocr(spec: str, psm: int, cache_dir: Path | None):
+    from qdu.ocr import create_ocr
 
-    return TesseractOcr(psm=psm, cache_dir=cache_dir)
+    return create_ocr(spec, cache_dir, psm=psm)
 
 
 def cmd_answer(args: argparse.Namespace) -> int:
@@ -32,7 +32,7 @@ def cmd_answer(args: argparse.Namespace) -> int:
         args.pipeline,
         text_model=create_model(args.text_model) if args.pipeline == "text" else None,
         vision_model=create_model(args.vision_model) if args.pipeline != "text" else None,
-        ocr=_ocr(args.psm, None) if needs_ocr else None,
+        ocr=_ocr(args.ocr, args.psm, None) if needs_ocr else None,
     )
     with Image.open(args.image) as image:
         out = pipeline.run(PipelineInput(args.question, image.convert("RGB"), args.image.stem))
@@ -96,7 +96,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         run_dir,
         text_model=create_model(args.text_model),
         vision_model=create_model(args.vision_model),
-        ocr=_ocr(args.psm, benchmark.DEFAULT_OCR_CACHE),
+        ocr=_ocr(args.ocr, args.psm, args.ocr_cache),
         pipelines=names,
         manifest=args.manifest,
         limit=args.limit,
@@ -147,7 +147,7 @@ def cmd_ocr_compare(args: argparse.Namespace) -> int:
 
     records = read_manifest(args.manifest)[: args.limit]
     specs = _names(args.engines)
-    engines = {spec: create_ocr(spec, benchmark.DEFAULT_OCR_CACHE, psm=args.psm) for spec in specs}
+    engines = {spec: create_ocr(spec, args.ocr_cache, psm=args.psm) for spec in specs}
     images = ImageStore()
 
     def on_result(r) -> None:
@@ -168,6 +168,44 @@ def cmd_ocr_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ocr_warm(args: argparse.Namespace) -> int:
+    import time
+
+    from qdu.data import ImageStore, read_manifest
+    from qdu.ocr.warm import warm_cache
+
+    records = read_manifest(args.manifest)[: args.limit]
+    engine = _ocr(args.engine, args.psm, args.ocr_cache)
+    pages = len({r.doc_id for r in records})
+    print(f"{engine.name} on {getattr(engine, 'hardware', '?')}: {pages} pages -> {args.ocr_cache}")
+    start, done = time.perf_counter(), 0
+
+    def on_page(record, result) -> None:
+        nonlocal done
+        done += 1
+        if not result.cached or done % 100 == 0:
+            source = "cache" if result.cached else f"{result.latency_s:6.2f} s"
+            elapsed = time.perf_counter() - start
+            print(f"  {done:>5}/{pages} {record.doc_id:<40} {source}  [{elapsed / 60:.1f} min]")
+
+    stats = warm_cache(records, ImageStore().get, engine, on_page)
+    mean = stats.seconds / stats.extracted if stats.extracted else 0.0
+    print(
+        f"\n{stats.pages} pages: {stats.extracted} extracted ({mean:.2f} s/page), "
+        f"{stats.cached} already cached"
+    )
+    return 0
+
+
+def _add_ocr_options(parser: argparse.ArgumentParser) -> None:
+    from qdu.ocr import OCR_SPECS
+
+    parser.add_argument(
+        "--ocr", choices=OCR_SPECS, default="tesseract", help="OCR engine for text/hybrid"
+    )
+    parser.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="qdu", description="Query-aware document understanding")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -178,7 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
     answer.add_argument("--pipeline", choices=PIPELINE_NAMES, required=True)
     answer.add_argument("--text-model", default="fake", help="model spec for the text pipeline")
     answer.add_argument("--vision-model", default="fake", help="model spec for vision/hybrid")
-    answer.add_argument("--psm", type=int, default=3)
+    _add_ocr_options(answer)
     answer.add_argument("--json", action="store_true", help="print the full pipeline output")
     answer.set_defaults(func=cmd_answer)
 
@@ -200,7 +238,15 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("--limit", type=int, help="only the first N questions")
     compare.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
     compare.add_argument("--out", type=Path, default=Path("runs/ocr-compare"))
+    compare.add_argument("--ocr-cache", type=Path, default=benchmark.DEFAULT_OCR_CACHE)
     compare.set_defaults(func=cmd_ocr_compare)
+    warm = ocr_sub.add_parser("warm", help="OCR every page of a manifest into the cache")
+    warm.add_argument("--engine", default="paddle-mobile", help="OCR spec, e.g. paddle-mobile")
+    warm.add_argument("--manifest", type=Path, default=benchmark.DEFAULT_MANIFEST)
+    warm.add_argument("--limit", type=int, help="only the first N questions")
+    warm.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
+    warm.add_argument("--ocr-cache", type=Path, default=benchmark.DEFAULT_OCR_CACHE)
+    warm.set_defaults(func=cmd_ocr_warm)
 
     bench = sub.add_parser("benchmark", help="evaluate the pipelines")
     bench_sub = bench.add_subparsers(dest="benchmark_command", required=True)
@@ -226,7 +272,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--pipelines", default=",".join(PIPELINE_NAMES))
     run.add_argument("--manifest", type=Path, default=benchmark.DEFAULT_MANIFEST)
     run.add_argument("--limit", type=int, help="only the first N questions")
-    run.add_argument("--psm", type=int, default=3)
+    _add_ocr_options(run)
+    run.add_argument("--ocr-cache", type=Path, default=benchmark.DEFAULT_OCR_CACHE)
     run.add_argument("--name", help="run name, default <text-model>__<vision-model>")
     run.add_argument("--runs-dir", type=Path, default=benchmark.DEFAULT_RUNS_DIR)
     run.set_defaults(func=cmd_run)

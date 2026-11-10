@@ -27,6 +27,7 @@ class PipelineOutput:
     ocr_engine: str | None = None
     ocr_latency_s: float | None = None
     ocr_chars: int | None = None
+    ocr_hardware: str | None = None
 
 
 class Pipeline(Protocol):

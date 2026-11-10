@@ -1,4 +1,5 @@
 import hashlib
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,30 @@ class OcrResult:
     latency_s: float
     """Time the engine took when the text was first extracted (also when served from cache)."""
     cached: bool = False
+    hardware: str | None = None
+    """CPU the latency was measured on (None for caches written before this was recorded)."""
+
+
+def read_cache(path: Path | None) -> OcrResult | None:
+    if path is None or not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return OcrResult(
+        data["text"], data["engine"], data["latency_s"], cached=True, hardware=data.get("hardware")
+    )
+
+
+def write_cache(path: Path | None, result: OcrResult) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "text": result.text,
+        "engine": result.engine,
+        "latency_s": result.latency_s,
+        "hardware": result.hardware,
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 class OcrEngine(Protocol):

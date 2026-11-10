@@ -35,7 +35,7 @@ from qdu.evaluation.oracle import (
 from qdu.models.base import LanguageModel
 from qdu.ocr.base import OcrEngine
 from qdu.pipelines import build_pipeline
-from qdu.provenance import file_sha256, gpu_info, run_metadata
+from qdu.provenance import cpu_info, file_sha256, gpu_info, run_metadata
 from qdu.runner import (
     PredictionRow,
     RunStats,
@@ -152,6 +152,7 @@ def run(
         vision_model=vision_model.name,
         pipelines=list(pipelines),
         ocr_engine=ocr.name,
+        cpu=cpu_info(),  # cached OCR times carry their own hardware in each row
         gpu=gpu_info(),
         text_model_config=_describe(text_model),
         vision_model_config=_describe(vision_model),

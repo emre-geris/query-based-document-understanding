@@ -1,6 +1,7 @@
 """Metadata written next to every benchmark output so a result can be traced to its code."""
 
 import hashlib
+import os
 import platform
 import subprocess
 import sys
@@ -42,6 +43,23 @@ def gpu_info() -> list[dict[str, str]] | None:
         dict(zip(keys, (v.strip() for v in line.split(",")), strict=False))
         for line in out.splitlines()
     ]
+
+
+def cpu_info() -> str:
+    """CPU model and logical core count, e.g. ``Intel(R) Xeon(R) CPU @ 2.20GHz x 12``.
+
+    OCR runs on the CPU and its time is a reported cost, so OCR outputs record where they were
+    measured, just as model runs record the GPU.
+    """
+    name = None
+    cpuinfo = Path("/proc/cpuinfo")
+    if cpuinfo.exists():
+        for line in cpuinfo.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("model name"):
+                name = line.split(":", 1)[1].strip()
+                break
+    name = name or platform.processor() or platform.machine() or "unknown CPU"
+    return f"{name} x {os.cpu_count()}"
 
 
 def file_sha256(path: Path) -> str:

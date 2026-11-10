@@ -40,6 +40,7 @@ class PredictionRow:
     ocr_chars: int | None
     raw_output: str | None
     error: str | None = None
+    ocr_hardware: str | None = None
 
 
 @dataclass
@@ -173,4 +174,5 @@ def _run_one(pipeline: Pipeline, inp: PipelineInput, record: QARecord) -> Predic
         ocr_latency_s=out.ocr_latency_s,
         ocr_chars=out.ocr_chars,
         raw_output=out.raw_output,
+        ocr_hardware=out.ocr_hardware,
     )

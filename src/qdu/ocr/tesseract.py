@@ -7,14 +7,14 @@ Results are cached per (psm, page key) as JSON because OCR
 dominates the runtime of text and hybrid pipelines and the same page is reused across runs.
 """
 
-import json
 import os
 import shutil
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from qdu.ocr.base import OcrResult, cache_file
+from qdu.ocr.base import OcrResult, cache_file, read_cache, write_cache
+from qdu.provenance import cpu_info
 
 if TYPE_CHECKING:
     from PIL.Image import Image
@@ -49,22 +49,18 @@ class TesseractOcr:
         self.version = str(pytesseract.get_tesseract_version())
         self.name = f"tesseract-{self.version}-psm{psm}"
         self.cache_dir = cache_dir / f"psm{psm}" if cache_dir else None
+        self.hardware = cpu_info()
 
     def _cache_path(self, key: str) -> Path | None:
         return cache_file(self.cache_dir, key) if self.cache_dir else None
 
     def extract(self, image: "Image", key: str) -> OcrResult:
         path = self._cache_path(key)
-        if path is not None and path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-            return OcrResult(data["text"], data["engine"], data["latency_s"], cached=True)
+        if (cached := read_cache(path)) is not None:
+            return cached
 
         start = time.perf_counter()
         text = self._pytesseract.image_to_string(image, lang=self.lang, config=f"--psm {self.psm}")
-        result = OcrResult(text, self.name, time.perf_counter() - start)
-
-        if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            payload = {"text": text, "engine": self.name, "latency_s": result.latency_s}
-            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        result = OcrResult(text, self.name, time.perf_counter() - start, hardware=self.hardware)
+        write_cache(path, result)
         return result

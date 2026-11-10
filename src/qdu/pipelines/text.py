@@ -27,4 +27,5 @@ class TextPipeline:
             ocr_engine=ocr.engine,
             ocr_latency_s=ocr.latency_s,
             ocr_chars=len(ocr.text),
+            ocr_hardware=ocr.hardware,
         )

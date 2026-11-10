@@ -49,3 +49,41 @@ def test_cache_file_is_valid_on_windows(tmp_path) -> None:
     assert "?" not in a.name and a != b
     a.parent.mkdir(parents=True)
     a.write_text("{}", encoding="utf-8")  # fails on Windows if the name is invalid
+
+
+def test_warm_cache_runs_each_page_once() -> None:
+    from qdu.data.records import QARecord
+    from qdu.ocr.base import OcrResult
+    from qdu.ocr.warm import warm_cache
+
+    class CountingOcr:
+        name = "counting"
+
+        def __init__(self) -> None:
+            self.seen: list[str] = []
+
+        def extract(self, image, key: str) -> OcrResult:
+            cached = key in self.seen
+            self.seen.append(key)
+            return OcrResult("text", self.name, 0.5, cached=cached, hardware="cpu x 1")
+
+    def rec(qid: str, doc: str) -> QARecord:
+        return QARecord(question_id=qid, dataset="docvqa", doc_id=doc, question="q", answers=["a"])
+
+    engine = CountingOcr()
+    records = [
+        rec("docvqa/1", "docvqa/d1"),
+        rec("docvqa/2", "docvqa/d1"),
+        rec("docvqa/3", "docvqa/d2"),
+    ]
+    stats = warm_cache(records, lambda r: Image.new("RGB", (4, 4)), engine)
+    assert engine.seen == ["docvqa/d1", "docvqa/d2"]
+    assert (stats.pages, stats.extracted, stats.cached, stats.seconds) == (2, 2, 0, 1.0)
+
+
+def test_cpu_info_names_the_core_count() -> None:
+    import os
+
+    from qdu.provenance import cpu_info
+
+    assert cpu_info().endswith(f"x {os.cpu_count()}")
