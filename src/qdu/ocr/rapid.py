@@ -7,9 +7,10 @@ paddlepaddle-gpu build (whose package index was unreachable in Nov 2026).
 
 Settings follow :mod:`qdu.ocr.paddle` where they affect the output: no angle classifier,
 pages longer than 4000 pixels downscaled for detection, and no recognition-score threshold
-(PaddleOCR's default keeps every line). On the GPU cuDNN's algorithm search is "DEFAULT"
-rather than RapidOCR's "EXHAUSTIVE", which would re-run for every new page shape and charge
-that search to the OCR time.
+(PaddleOCR's default keeps every line). On the GPU cuDNN's algorithm search is "HEURISTIC":
+on a 223-line page (L4) it recognised in 1.18 s against 2.3 s with "DEFAULT", and it matches
+RapidOCR's "EXHAUSTIVE" (1.15 s) without re-running a search for every new page shape.
+Recognition batches of 6 lines (RapidOCR's default) beat 64 (2.5 s) on the GPU.
 
 Results carry their own engine name (``-gpu`` on the GPU), cache directory and hardware
 record, as for PaddleOCR. The engine runs once on a blank page when built, so one-off
@@ -56,7 +57,7 @@ class RapidOcr:
             "EngineConfig.onnxruntime.use_cuda": gpu,
         }
         if gpu:
-            params["EngineConfig.onnxruntime.cuda_ep_cfg.cudnn_conv_algo_search"] = "DEFAULT"
+            params["EngineConfig.onnxruntime.cuda_ep_cfg.cudnn_conv_algo_search"] = "HEURISTIC"
         self._ocr = RapidOCR(params=params)
         self.model = model
         suffix = "-gpu" if gpu else ""
