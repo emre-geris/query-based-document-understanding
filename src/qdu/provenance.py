@@ -10,7 +10,15 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-TRACKED_PACKAGES = ("datasets", "openai", "pillow", "pytesseract")
+TRACKED_PACKAGES = (
+    "datasets",
+    "openai",
+    "pillow",
+    "pytesseract",
+    "paddleocr",
+    "paddlepaddle",  # 3.3.x breaks oneDNN, which changes measured OCR time
+    "pypdfium2",  # renders TAT-DQA pages
+)
 
 
 def _run(*args: str) -> str | None:
