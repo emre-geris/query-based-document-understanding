@@ -45,6 +45,22 @@ def test_image_request_sends_png_data_url_before_the_text() -> None:
     assert content[1] == {"type": "text", "text": "Read it"}
 
 
+def test_latency_excludes_client_side_image_encoding(monkeypatch) -> None:
+    import time
+
+    import qdu.models.openai_compat as oc
+
+    real = oc.build_messages
+
+    def slow_build(*args, **kwargs):
+        time.sleep(0.3)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(oc, "build_messages", slow_build)
+    out = OpenAICompatModel("m", client=RecordingClient()).generate("x", [Image.new("RGB", (4, 4))])
+    assert out.latency_s < 0.3
+
+
 def test_registry_builds_openai_models() -> None:
     model = create_model("openai:Qwen/Qwen3.5-4B")
     assert model.name == "Qwen/Qwen3.5-4B"

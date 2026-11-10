@@ -133,10 +133,13 @@ class OpenAICompatModel:
         extra_body = (
             {"chat_template_kwargs": {"enable_thinking": False}} if self.disable_thinking else {}
         )
+        # Resizing and PNG-encoding a 16 MP page takes seconds on the client; it is an artefact
+        # of the HTTP transport, not model cost, so it happens before the clock starts.
+        messages = build_messages(prompt, images, self.max_image_pixels)
         start = time.perf_counter()
         response = self._client.chat.completions.create(
             model=self.model,
-            messages=build_messages(prompt, images, self.max_image_pixels),
+            messages=messages,
             temperature=0.0,
             max_tokens=self.max_tokens,
             extra_body=extra_body,
