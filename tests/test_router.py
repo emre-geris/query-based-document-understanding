@@ -5,7 +5,7 @@ import pytest
 
 from qdu.cli import main
 from qdu.data import QARecord, write_manifest
-from qdu.ocr.base import OcrResult, cache_file, write_cache
+from qdu.ocr.base import OcrLine, OcrResult, cache_file, write_cache
 from qdu.router import (
     Policy,
     QuestionShape,
@@ -14,7 +14,9 @@ from qdu.router import (
     choose,
     cost_quality_curve,
     evaluate,
+    load_ocr,
     mean_costs,
+    pack_ocr,
     read_labels,
     read_policy,
     route,
@@ -173,26 +175,55 @@ def test_read_policy_csv(tmp_path: Path) -> None:
         read_policy(path)
 
 
-def test_features_read_cached_ocr_and_time_extractors(run, tmp_path: Path) -> None:
+def _cache(tmp_path: Path) -> Path:
+    """An engine folder as a Drive zip delivers it: one name mangled, one decoy with the wrong
+    time under the right name and the real page renamed with (1)."""
+    engine = tmp_path / "ocr" / "rapid-mobile-gpu"
+    lines = (OcrLine("abc", 0.9, (0, 0, 10, 10)), OcrLine("xyz", 0.4, (0, 20, 10, 30)))
+    write_cache(cache_file(engine, "docvqa/10"), OcrResult("abc\nxyz", "e", OCR_S, lines=lines))
+    write_cache(engine / "docvqa" / "11.json", OcrResult("decoy", "e", 9.9))
+    write_cache(engine / "docvqa" / "11(1).json", OcrResult("q", "e", OCR_S))
+    write_cache(engine / "chartqa" / "12.json", OcrResult("7", "e", OCR_S))
+    return engine
+
+
+def test_pack_ocr_matches_pages_by_their_run_time(run, tmp_path: Path) -> None:
     rows = build_labels(*run)
-    cache = tmp_path / "ocr"
-    write_cache(cache_file(cache / "rapid-mobile-gpu", "docvqa/10"), OcrResult("abc xyz", "e", 0.5))
+    out = tmp_path / "ocr.jsonl.gz"
+    assert pack_ocr(rows, _cache(tmp_path), out) == 3
+    ocr = load_ocr(out)
+    assert ocr["docvqa/11"].text == "q"  # not the decoy
+    assert ocr["docvqa/10"].lines[1] == OcrLine("xyz", 0.4, (0, 20, 10, 30))
+    (tmp_path / "ocr" / "rapid-mobile-gpu" / "chartqa" / "12.json").unlink()
+    with pytest.raises(ValueError, match="1 pages"):
+        pack_ocr(rows, tmp_path / "ocr" / "rapid-mobile-gpu", out)
+
+
+def test_features_get_ocr_and_time_extractors(run, tmp_path: Path) -> None:
+    rows = build_labels(*run)
+    out = tmp_path / "ocr.jsonl.gz"
+    pack_ocr(rows, _cache(tmp_path), out)
 
     class OcrWords:
         name, needs_ocr = "ocr", True
 
         def __call__(self, item):
-            return {"words": len(item.ocr.text.split()) if item.ocr else -1}
+            low = sum(line.score < 0.5 for line in item.ocr.lines)
+            return {"words": len(item.ocr.text.split()), "low_conf": low}
 
-    table = build_features(router_inputs(rows, cache), [QuestionShape(), OcrWords()])
+    table = build_features(router_inputs(rows, load_ocr(out)), [QuestionShape(), OcrWords()])
     assert table.needs_ocr
     assert table.features["docvqa/1"]["ocr_words"] == 2
-    assert table.features["docvqa/3"]["ocr_words"] == -1  # page not in the cache
+    assert table.features["docvqa/1"]["ocr_low_conf"] == 1
     assert table.features["docvqa/1"]["q_wh_what"] == 1.0
     assert set(table.seconds["docvqa/1"]) == {"q", "ocr"}
-    out = tmp_path / "features.csv"
-    table.write(out)
-    assert out.read_text().splitlines()[0].startswith("question_id,ocr_words,q_has_digit")
+    csv_out = tmp_path / "features.csv"
+    table.write(csv_out)
+    assert csv_out.read_text().splitlines()[0].startswith("question_id,ocr_low_conf,ocr_words")
+    with pytest.raises(ValueError, match="needs OCR"):
+        build_features(router_inputs(rows), [OcrWords()])
+    with pytest.raises(ValueError, match="no OCR for 1 pages"):
+        router_inputs(rows, {k: v for k, v in load_ocr(out).items() if k != "chartqa/12"})
 
 
 def test_cli_labels_and_evaluate(run, tmp_path: Path, capsys) -> None:

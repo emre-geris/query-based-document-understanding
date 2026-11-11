@@ -1,10 +1,10 @@
 """Router signals: feature extractors and the feature table keyed by question id.
 
-An extractor turns one question (with lazy access to its page image and cached OCR) into named
-numbers. Each declares whether it needs OCR, so the evaluation can charge OCR to a router that
+An extractor turns one question (with its page's OCR and lazy access to the page image) into
+named numbers. Each declares whether it needs OCR, so the evaluation can charge OCR to a router that
 uses it (scenario C), and its time per question is measured, since the decision must stay
-under 50 ms. Loading the image or the cached OCR is not timed: OCR time is charged separately
-from the label table, and the image is decoded anyway by the path that answers.
+under 50 ms. Loading the image is not timed (the path that answers decodes it anyway), nor is
+the OCR, whose time is charged separately from the label table.
 
 S1-S4 are to be written as extractors like `QuestionShape`, an example S1-style extractor.
 """
@@ -18,14 +18,11 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from qdu.ocr.base import OcrResult, cache_file, read_cache
+from qdu.ocr.base import OcrResult
 from qdu.router.labels import LabelRow
 
 if TYPE_CHECKING:
     from PIL.Image import Image
-
-# The OCR of the full labelling run (PP-OCRv5 mobile, RapidOCR on an L4).
-DEFAULT_OCR_ENGINE_DIR = "rapid-mobile-gpu"
 
 
 @dataclass
@@ -35,13 +32,9 @@ class RouterInput:
     question_id: str
     doc_id: str
     question: str
-    _ocr: Callable[[], OcrResult | None] = field(repr=False)
+    ocr: OcrResult | None = field(default=None, repr=False)
+    """The page's OCR from the run (text, lines with confidences and boxes, page size)."""
     _image: Callable[[], "Image"] | None = field(default=None, repr=False)
-
-    @cached_property
-    def ocr(self) -> OcrResult | None:
-        """Cached OCR of the page (text, lines with confidences and boxes, page size)."""
-        return self._ocr()
 
     @cached_property
     def image(self) -> "Image":
@@ -60,24 +53,23 @@ class FeatureExtractor(Protocol):
 
 def router_inputs(
     rows: Iterable[LabelRow],
-    ocr_cache: Path | None,
+    ocr: Mapping[str, OcrResult] | None = None,
     *,
-    engine_dir: str = DEFAULT_OCR_ENGINE_DIR,
     images: Callable[[LabelRow], "Image"] | None = None,
 ) -> list[RouterInput]:
-    """Inputs for ``rows``; OCR is read from ``<ocr_cache>/<engine_dir>`` when first used."""
-
-    def ocr_loader(doc_id: str) -> Callable[[], OcrResult | None]:
-        if ocr_cache is None:
-            return lambda: None
-        return lambda: read_cache(cache_file(ocr_cache / engine_dir, doc_id))
-
+    """Inputs for ``rows``. ``ocr`` maps page ids to OCR (`qdu.router.ocr.load_ocr`); a page
+    missing from it is an error, so an OCR signal never silently sees no text."""
+    rows = list(rows)
+    if ocr is not None:
+        missing = sorted({r.doc_id for r in rows} - set(ocr))
+        if missing:
+            raise ValueError(f"no OCR for {len(missing)} pages, e.g. {missing[:3]}")
     return [
         RouterInput(
             r.question_id,
             r.doc_id,
             r.question,
-            ocr_loader(r.doc_id),
+            ocr[r.doc_id] if ocr is not None else None,
             (lambda r=r: images(r)) if images else None,
         )
         for r in rows
@@ -116,8 +108,8 @@ def build_features(
     features: dict[str, dict[str, float]] = {}
     seconds: dict[str, dict[str, float]] = {}
     for item in items:
-        if any(e.needs_ocr for e in extractors):
-            _ = item.ocr  # load before the clock starts
+        if item.ocr is None and any(e.needs_ocr for e in extractors):
+            raise ValueError(f"{item.question_id}: an extractor needs OCR but none was given")
         row: dict[str, float] = {}
         times: dict[str, float] = {}
         for e in extractors:

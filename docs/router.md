@@ -18,11 +18,14 @@ uv run qdu router evaluate     # baselines on the validation split (needs only t
 
 Keep the clone and the virtual environment outside OneDrive (README, *Setup*).
 
-Two optional downloads, only for signals that need them:
+The OCR every signal should use is in the repo: `results/full-qwen3.5-4b/ocr.jsonl.gz`, the
+run's own PP-OCRv5 output for all 3,586 pages (text, every line with its confidence and box,
+page size, OCR time), loaded with `qdu.router.load_ocr()`. Do not re-run OCR on a laptop: its
+text would differ slightly from what the text and hybrid paths saw, and its time is not the
+cost the label table charges. Only page images need a download:
 
 | What | Needed for | How |
 |---|---|---|
-| OCR of every page (PP-OCRv5, as used by the run) | S2, S4 (text, confidences, line boxes) | unpack `ocr_cache.zip` (from Emre, see §6) into `data/ocr_cache/`, giving `data/ocr_cache/rapid-mobile-gpu/<dataset>/<page>.json` |
 | Page images (~1.6 GB) | S3 (image size, layout) | `uv run qdu data download` (Hugging Face cache, never into the repo) |
 
 ## 2. What you start from
@@ -105,6 +108,7 @@ from qdu.router import (
     build_features,
     cost_quality_curve,
     evaluate,
+    load_ocr,
     mean_costs,
     read_labels,
     route,
@@ -115,7 +119,7 @@ labels = Path("results/full-qwen3.5-4b/labels.csv")
 train = read_labels(labels, splits=["train"])
 val = read_labels(labels, splits=["val"])
 
-features = build_features(router_inputs(train + val, Path("data/ocr_cache")), [QuestionShape()])
+features = build_features(router_inputs(train + val, load_ocr()), [QuestionShape()])
 # ... fit one quality model per path on train: features -> score_<path> ...
 predicted = {qid: {"text": 0.7, "vision": 0.9, "hybrid": 0.9} for qid in features.features}
 

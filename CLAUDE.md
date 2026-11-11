@@ -108,7 +108,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 
 ### Phase 3 — Signals (H5–H7)
 - [x] Compare Tesseract vs PP-OCRv5 on the 300 pilot pages (`qdu ocr compare`, laptop CPU). Answer coverage in the OCR text: Tesseract 0.42, PP-OCRv5 mobile 0.63 (DocVQA 0.65 → 0.72, InfographicVQA 0.34 → 0.51, ChartQA 0.28 → 0.67); 80 pages where only PP-OCRv5 keeps the answer, 17 where only Tesseract does. Time per page 0.6 s vs 24 s, the latter with oneDNN off (paddle 3.3.1), so not representative; with paddle 3.2.2 and oneDNN it is ~1 s per page on the laptop and ~3 s on the Colab CPU. PP-OCRv5 server skipped: several times slower on CPU, and mobile already settles the choice
-- [ ] OCR with word boxes + confidences: PP-OCRv5 lines (text, confidence, box) and the page size are stored in the OCR cache (`OcrResult.lines`), so the full-run pre-pass already provides them; Tesseract 5 `image_to_data` still to add for the cheap baseline
+- [ ] OCR with word boxes + confidences: PP-OCRv5 lines (text, confidence, box) and the page size are stored in the OCR cache (`OcrResult.lines`), so the full-run pre-pass already provides them (all pages packed into `results/full-qwen3.5-4b/ocr.jsonl.gz` by `qdu router pack-ocr`, since the per-page cache files clash on Windows and in Drive zips); Tesseract 5 `image_to_data` still to add for the cheap baseline
 - [ ] Layout detection with PP-DocLayout (PaddleOCR 3.x; S/M variant first for speed, V3 if accuracy needs it): text / table / figure regions per page, cached; its time is reported next to the < 50 ms router decision time
 - [ ] S1 question features (wh-type, numeric/visual cue words, length, TF-IDF)
 - [ ] S2 OCR-text features (word count, mean/low confidence share, numeric density)

@@ -271,7 +271,7 @@ def cmd_router_evaluate(args: argparse.Namespace) -> int:
 
 
 def cmd_router_features(args: argparse.Namespace) -> int:
-    from qdu.router import EXTRACTORS, build_features, read_labels, router_inputs
+    from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
 
     unknown = [e for e in _names(args.extractors) if e not in EXTRACTORS]
     if unknown:
@@ -279,10 +279,23 @@ def cmd_router_features(args: argparse.Namespace) -> int:
         return 2
     extractors = [EXTRACTORS[e]() for e in _names(args.extractors)]
     rows = read_labels(args.labels, splits=_splits(args.split))
-    table = build_features(router_inputs(rows, args.ocr_cache), extractors)
+    ocr = load_ocr(args.ocr) if any(e.needs_ocr for e in extractors) else None
+    table = build_features(router_inputs(rows, ocr), extractors)
     table.write(args.out)
     n_features = len(next(iter(table.features.values()), {}))
     print(f"{len(table.features)} questions x {n_features} features -> {args.out}")
+    return 0
+
+
+def cmd_router_pack_ocr(args: argparse.Namespace) -> int:
+    from qdu.router import pack_ocr, read_labels
+
+    try:
+        n = pack_ocr(read_labels(args.labels), args.ocr_cache, args.out)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"{n} pages -> {args.out}")
     return 0
 
 
@@ -431,9 +444,18 @@ def build_parser() -> argparse.ArgumentParser:
     feat.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
     feat.add_argument("--split", choices=SPLIT_CHOICES, default="all")
     feat.add_argument("--extractors", default="q", help="comma-separated extractor names")
-    feat.add_argument("--ocr-cache", type=Path, default=benchmark.DEFAULT_OCR_CACHE)
+    feat.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     feat.add_argument("--out", type=Path, required=True)
     feat.set_defaults(func=cmd_router_features)
+    pack = router_sub.add_parser(
+        "pack-ocr", help="collect the run's OCR of every labelled page into one file"
+    )
+    pack.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    pack.add_argument(
+        "--ocr-cache", type=Path, required=True, help="engine folder, e.g. <cache>/rapid-mobile-gpu"
+    )
+    pack.add_argument("--out", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    pack.set_defaults(func=cmd_router_pack_ocr)
     return parser
 
 

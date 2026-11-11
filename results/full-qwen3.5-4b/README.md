@@ -22,7 +22,9 @@ Files: `predictions.jsonl` (one row per call, failed calls included; the latest 
 per question and path counts), reports with oracle ties broken by latency (this folder) and by
 tokens (`cost-tokens/`), and `labels.csv` (`qdu router labels`): one row per question with its
 router split, every path's score and C / B / A cost, and both oracle labels, the starting
-point for router training (`docs/router.md`).
+point for router training (`docs/router.md`), and `ocr.jsonl.gz` (`qdu router pack-ocr`): the
+OCR of all 3,586 pages as the run used it (text, lines with confidence and box, page size, time),
+checked against every row's OCR time and character count.
 
 ## Results
 
