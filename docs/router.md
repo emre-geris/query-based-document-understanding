@@ -2,9 +2,10 @@
 
 Everything needed to build and evaluate the router **on a laptop, without a GPU**. The GPU
 work is finished: every question of the four datasets was answered by all three paths
-(`results/full-qwen3.5-4b/`, 10–11 Nov 2026), and the label table, cost accounting, bootstrap
-and evaluation command are in place. What remains is the router itself: signals S1–S4, the
-per-path quality models, λ and the two-stage design (CLAUDE.md, Phases 3–5).
+(`results/full-qwen3.5-4b/`, 10–11 Nov 2026), and the label table, the run's OCR, page
+layouts, signals S1–S4, cost accounting, bootstrap, the cascade baseline and the evaluation
+command are in place. What remains is the router itself: the per-path quality models, λ, the
+two-stage design, the remaining baselines and ablations (CLAUDE.md, Phases 4–5).
 
 ## 1. Set-up
 
@@ -18,15 +19,18 @@ uv run qdu router evaluate     # baselines on the validation split (needs only t
 
 Keep the clone and the virtual environment outside OneDrive (README, *Setup*).
 
-The OCR every signal should use is in the repo: `results/full-qwen3.5-4b/ocr.jsonl.gz`, the
-run's own PP-OCRv5 output for all 3,586 pages (text, every line with its confidence and box,
-page size, OCR time), loaded with `qdu.router.load_ocr()`. Do not re-run OCR on a laptop: its
-text would differ slightly from what the text and hybrid paths saw, and its time is not the
-cost the label table charges. Only page images need a download:
+Everything the signals read is in the repo, so no download is needed:
 
-| What | Needed for | How |
+| File | What | Load with |
 |---|---|---|
-| Page images (~1.6 GB) | S3 (image size, layout) | `uv run qdu data download` (Hugging Face cache, never into the repo) |
+| `results/full-qwen3.5-4b/ocr.jsonl.gz` | the run's own PP-OCRv5 output for all 3,586 pages: text, every line with confidence and box, page size, OCR time | `qdu.router.load_ocr()` |
+| `results/full-qwen3.5-4b/layout.jsonl.gz` | PP-DocLayout-M regions of every page (label, score, box), page size, detection time on a laptop CPU | `qdu.layout.load_layout()` |
+| `results/full-text-logprobs-qwen3.5-4b/` | the text path re-run with token log-probabilities (confidence for the cascade) | `qdu.router.cascade.read_confidence()` |
+
+Do not re-run OCR on a laptop: its text would differ slightly from what the text and hybrid
+paths saw, and its time is not the cost the label table charges. Page images
+(`uv run qdu data download`, ~1.6 GB, Hugging Face cache) are only needed for new image-based
+signals; `qdu layout detect` re-creates the layout file from them (needs `uv sync --extra paddle`).
 
 ## 2. What you start from
 
@@ -103,8 +107,12 @@ questions have a single best path, so most of the gain is sending easy questions
 
 ```python
 from pathlib import Path
+from qdu.layout import load_layout
 from qdu.router import (
-    QuestionShape,
+    EvidenceSignals,
+    OcrSignals,
+    PageSignals,
+    QuestionSignals,
     build_features,
     cost_quality_curve,
     evaluate,
@@ -118,8 +126,10 @@ from qdu.router import (
 labels = Path("results/full-qwen3.5-4b/labels.csv")
 train = read_labels(labels, splits=["train"])
 val = read_labels(labels, splits=["val"])
+layout = load_layout()
 
-features = build_features(router_inputs(train + val, load_ocr()), [QuestionShape()])
+signals = [QuestionSignals(), OcrSignals(), PageSignals(), EvidenceSignals()]
+features = build_features(router_inputs(train + val, load_ocr(), layout), signals)
 # ... fit one quality model per path on train: features -> score_<path> ...
 predicted = {qid: {"text": 0.7, "vision": 0.9, "hybrid": 0.9} for qid in features.features}
 
@@ -130,19 +140,28 @@ policy = route(
     cost,
     lam=0.1,
     name="my-router",
-    uses_ocr={r.question_id: features.needs_ocr for r in val},
+    **features.router_cost(layout, {r.question_id: r.doc_id for r in train + val}),
 )
 for result in evaluate(val, [policy]):
     print(result.group, result.method, result.score, result.cost_c, result.score_vs_baseline)
 ```
 
 - **Signals** are extractors (`qdu.router.features.FeatureExtractor`): a `name` (feature
-  prefix), `needs_ocr`, and `__call__(item) -> {feature: number}`. `QuestionShape` is a
-  working example (question length, wh-word, cue words). Put S1–S4 in
-  `src/qdu/router/signals/` or next to it, register them in `qdu.router.EXTRACTORS`, and
-  `uv run qdu router features --extractors q,s1,... --out runs/features.csv` builds the table.
-- `item.ocr.lines` gives every OCR line as `(text, score, (x0, y0, x1, y1))` and
-  `item.ocr.page_size` the page size, for confidence features and evidence location (S4).
+  prefix), `needs_ocr`, `needs_layout`, and `__call__(item) -> {feature: number}`. S1–S4 are
+  in `qdu.router.signals` (see its docstring for each feature) and registered in
+  `qdu.router.EXTRACTORS`; `uv run qdu router features --out runs/features.csv` builds the
+  table with all four (`--extractors s1,s3` for a subset, e.g. an ablation). New signals go
+  next to them and are registered the same way.
+- **TF-IDF** of the question is not an extractor: its vocabulary must be fitted on `train`
+  only, so it belongs inside the model (e.g. an sklearn pipeline fitted on the training rows).
+- `item.ocr.lines` gives every OCR line as `(text, score, (x0, y0, x1, y1))`, `item.ocr.page_size`
+  the page size, and `item.layout.regions` the layout regions `(label, score, box)`.
+- **Router cost**: `features.router_cost(layout, doc_of)` gives `uses_ocr`, `page_s` (layout
+  time) and `question_s` (extractor time) for `route` or a choices CSV. A two-stage router
+  passes OCR and layout only for the questions that reached stage 2.
+- **Cascade baseline**: `qdu.router.cascade` (`read_confidence`, `cascade`, `sweep`); choose
+  its threshold on `val` like λ. It is weak: on val it never reaches always-vision (78.4 vs
+  88.0 points at equal C cost; `results/full-text-logprobs-qwen3.5-4b/README.md`).
 - New commands go in `qdu router ...` (`src/qdu/cli.py`), e.g. `qdu router train`; heavy
   dependencies (scikit-learn, LightGBM) are added with `uv add`, never `pip install`.
 - Every module gets tests in `tests/`; `uv run ruff check .` and `uv run pytest` must pass
@@ -151,14 +170,8 @@ for result in evaluate(val, [policy]):
 
 ## 6. Open items (CLAUDE.md roadmap)
 
-- Phase 3 signals: Tesseract `image_to_data` for the cheap OCR baseline; PP-DocLayout regions
-  (cached, timed); S1 question, S2 OCR text, S3 page, S4 evidence location; feature table and
-  decision-time measurement (the table and timing exist: `qdu router features`).
-- Phase 4: per-path quality regressors (Ridge, LightGBM); λ on val; two-stage router; baselines
-  (EcoDoc-style rules, question-only TF-IDF + logistic regression, text→vision cascade);
-  ablations S1 → S1–S4; `qdu router train|evaluate` with a versioned router artefact.
+- Phase 4: per-path quality regressors (Ridge, LightGBM) on S1–S4 (+ question TF-IDF); λ on
+  val; two-stage router; baselines (EcoDoc-style rules, question-only TF-IDF + logistic
+  regression; the cascade exists); ablations S1 → S1–S4; `qdu router train` with a versioned
+  router artefact.
 - Phase 5: test-split evaluation, TAT-DQA as unseen data, the success-criteria table.
-
-The text→vision cascade baseline needs a confidence for the text answer; the run did not log
-token log-probabilities, so it has to use a proxy (e.g. answer length or OCR confidence of the
-matched words) or a short GPU re-run of the text path with logprobs on.
