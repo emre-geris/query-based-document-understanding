@@ -114,3 +114,32 @@ def test_same_page_is_encoded_once_for_vision_then_hybrid(monkeypatch) -> None:
     assert calls == [page, other]
     urls = [r["messages"][0]["content"][0]["image_url"]["url"] for r in client.requests]
     assert urls[0] == urls[1]
+
+
+def test_logprobs_are_requested_only_when_asked(monkeypatch) -> None:
+    client = RecordingClient()
+    assert OpenAICompatModel("m", client=client).generate("q").token_logprobs is None
+    assert "logprobs" not in client.requests[0]
+
+    tokens = [SimpleNamespace(logprob=-0.01), SimpleNamespace(logprob=-2.5)]
+    client.text = "19"
+
+    def with_logprobs(**kwargs):
+        client.requests.append(kwargs)
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="19"),
+                    logprobs=SimpleNamespace(content=tokens),
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=5, completion_tokens=2),
+        )
+
+    client.chat.completions.create = with_logprobs
+    monkeypatch.setenv("QDU_LOGPROBS", "1")
+    model = OpenAICompatModel("m", client=client)
+    out = model.generate("q")
+    assert client.requests[-1]["logprobs"] is True
+    assert out.token_logprobs == (-0.01, -2.5)
+    assert model.describe()["logprobs"] is True

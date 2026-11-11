@@ -15,6 +15,8 @@ class Generation:
     input_tokens: int | None = None
     output_tokens: int | None = None
     latency_s: float = 0.0
+    token_logprobs: tuple[float, ...] | None = None
+    """Log-probability of each generated token, when the provider was asked for them."""
 
 
 class LanguageModel(Protocol):

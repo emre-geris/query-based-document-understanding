@@ -19,6 +19,11 @@ full-resolution page.
 
 The server's launch flags are not visible through the API, so the runbook passes them in
 ``QDU_SERVER_ARGS`` and they are recorded with every run.
+
+``QDU_LOGPROBS=1`` (or ``logprobs=True``) asks for the log-probability of every generated
+token, the model's confidence in its answer (e.g. for a text-then-vision cascade). It is off by
+default: it does not change greedy answers, but returning it adds work to every call, and
+latency is a reported cost.
 """
 
 import base64
@@ -97,6 +102,7 @@ class OpenAICompatModel:
         max_retries: int = 3,
         disable_thinking: bool = True,
         max_image_pixels: int | None = None,
+        logprobs: bool | None = None,
         client: Any = None,
     ) -> None:
         self.base_url = base_url or os.environ.get("QDU_OPENAI_BASE_URL", DEFAULT_BASE_URL)
@@ -117,6 +123,9 @@ class OpenAICompatModel:
         self.max_image_pixels = max_image_pixels or int(
             os.environ.get("QDU_MAX_IMAGE_PIXELS", DEFAULT_MAX_IMAGE_PIXELS)
         )
+        self.logprobs = (
+            logprobs if logprobs is not None else os.environ.get("QDU_LOGPROBS", "0") == "1"
+        )
         self._last_encoded: tuple[Image, str] | None = None
 
     def describe(self) -> dict[str, Any]:
@@ -130,6 +139,7 @@ class OpenAICompatModel:
             "temperature": 0.0,
             "thinking_disabled": self.disable_thinking,
             "max_image_pixels": self.max_image_pixels,
+            "logprobs": self.logprobs,
             "server_args": os.environ.get("QDU_SERVER_ARGS"),
             "server_version": _fetch_json(f"{root}/version"),
             "server_models": _fetch_json(f"{root}/v1/models"),
@@ -151,6 +161,7 @@ class OpenAICompatModel:
         # Resizing and PNG-encoding a 16 MP page takes seconds on the client; it is an artefact
         # of the HTTP transport, not model cost, so it happens before the clock starts.
         messages = build_messages(prompt, images, encode=self._encode)
+        options = {"logprobs": True} if self.logprobs else {}
         start = time.perf_counter()
         response = self._client.chat.completions.create(
             model=self.model,
@@ -158,13 +169,19 @@ class OpenAICompatModel:
             temperature=0.0,
             max_tokens=self.max_tokens,
             extra_body=extra_body,
+            **options,
         )
         latency = time.perf_counter() - start
         usage = response.usage
+        token_logprobs = None
+        if self.logprobs:
+            content = getattr(response.choices[0].logprobs, "content", None) or []
+            token_logprobs = tuple(float(t.logprob) for t in content)
         return Generation(
             text=response.choices[0].message.content or "",
             model=self.model,
             input_tokens=getattr(usage, "prompt_tokens", None),
             output_tokens=getattr(usage, "completion_tokens", None),
             latency_s=latency,
+            token_logprobs=token_logprobs,
         )

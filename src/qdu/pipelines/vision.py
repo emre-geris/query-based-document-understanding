@@ -23,4 +23,5 @@ class VisionPipeline:
             input_tokens=gen.input_tokens,
             output_tokens=gen.output_tokens,
             model_latency_s=gen.latency_s,
+            token_logprobs=gen.token_logprobs,
         )
