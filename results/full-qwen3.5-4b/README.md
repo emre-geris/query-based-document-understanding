@@ -20,7 +20,9 @@ that router training and evaluation (Phases 3–5) start from.
 
 Files: `predictions.jsonl` (one row per call, failed calls included; the latest successful row
 per question and path counts), reports with oracle ties broken by latency (this folder) and by
-tokens (`cost-tokens/`).
+tokens (`cost-tokens/`), and `labels.csv` (`qdu router labels`): one row per question with its
+router split, every path's score and C / B / A cost, and both oracle labels, the starting
+point for router training (`docs/router.md`).
 
 ## Results
 
@@ -43,16 +45,16 @@ among the page's questions.
 OCR time per page (mean): ChartQA 0.23 s, DocVQA 0.77 s, InfographicVQA 0.92 s, TAT-DQA
 1.10 s.
 
-Oracle minus always-vision, with 95% CIs from a paired bootstrap that resamples documents
-(1,000 resamples, seed 0):
+Differences to always-vision, with 95% CIs from a paired bootstrap that resamples documents
+(1,000 resamples, seed 0; `qdu router evaluate --split all`):
 
 | | Oracle − vision | Hybrid − vision | Text − vision |
 |---|---|---|---|
-| All (3,586 docs) | +4.2 [+3.9, +4.6] | −0.1 [−0.5, +0.3] | −22.6 [−23.6, −21.5] |
-| DocVQA | +2.2 [+1.8, +2.6] | −0.2 [−0.6, +0.2] | −16.8 [−18.2, −15.6] |
-| InfographicVQA | +6.0 [+5.0, +7.0] | −0.3 [−1.3, +0.6] | −31.2 [−33.7, −28.7] |
-| ChartQA | +3.6 [+2.9, +4.3] | −1.2 [−2.1, −0.2] | −40.6 [−42.8, −38.4] |
-| TAT-DQA | +8.9 [+7.7, +10.2] | +2.2 [+0.9, +3.6] | +0.6 [−1.1, +2.4] |
+| All (3,586 docs) | +4.2 [+3.9, +4.6] | −0.1 [−0.5, +0.3] | −22.6 [−23.7, −21.6] |
+| DocVQA | +2.2 [+1.8, +2.6] | −0.2 [−0.6, +0.2] | −16.8 [−18.2, −15.5] |
+| InfographicVQA | +6.0 [+5.1, +6.9] | −0.3 [−1.3, +0.7] | −31.2 [−33.7, −28.7] |
+| ChartQA | +3.6 [+2.9, +4.4] | −1.2 [−2.0, −0.2] | −40.6 [−42.7, −38.5] |
+| TAT-DQA | +8.9 [+7.7, +10.2] | +2.2 [+0.9, +3.6] | +0.6 [−1.1, +2.5] |
 
 ## Findings
 

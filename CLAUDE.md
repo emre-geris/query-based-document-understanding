@@ -26,6 +26,7 @@ Never use `pip install` or edit `uv.lock` by hand.
 
 - All code lives in the `qdu` package under `src/qdu/`, with tests in `tests/`. There are no standalone scripts; new entry points are `qdu` CLI subcommands in `cli.py`.
 - `notebooks/` holds GPU runbooks (Colab) that only call `qdu` commands; no logic lives in notebooks.
+- `qdu.router` holds the label table, signal extractors, decision rule and evaluation; `docs/router.md` is the hand-off guide for router work (set-up, label-table columns, split and cost rules).
 - `benchmarks/` holds committed question manifests written by `qdu benchmark sample`; never edit them by hand.
 - `results/<run>/` holds GPU runs worth keeping (predictions, run_info, reports, a README with findings); they cannot be regenerated without a GPU, so they are committed. Reports inside are regenerated with `qdu benchmark report`.
 - `runs/` (scratch benchmark outputs) and `data/` (caches) are gitignored.
@@ -103,7 +104,7 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [x] E · Check run on Colab L4 (10 Nov 2026), `results/check52v2-qwen3.5-4b/`: 52 questions × 3 paths with PP-OCRv5; audit passes and reports reproduce byte-identically. Found and fixed: TAT-DQA page PNGs are 224 × 224 thumbnails (now rendered from the PDFs), paddlepaddle 3.3 breaks oneDNN (pinned 3.2.2). Finding: CPU OCR (~3 s/page) costs more than a vision call (~1.4 s), so under scenario C text is costlier than vision; the OCR choice for the full run (CPU PP-OCRv5, GPU OCR or Tesseract) is the project lead's decision
 - [x] E · GPU OCR test (Colab L4, 10 Nov 2026), 52 check pages, PP-OCRv5 mobile: paddlepaddle-gpu could not be installed (Paddle index 502, BOS mirror 404); the same models via RapidOCR on ONNX Runtime CUDA (`--ocr rapid-mobile-gpu`, cuDNN search HEURISTIC) take **0.85 s/page** (ChartQA 0.24, DocVQA 0.96, InfographicVQA 1.11, TAT-DQA 1.08) against 2.87 s for RapidOCR and 2.99 s for PaddleOCR on the same VM's 12 CPU cores, with identical answer coverage (0.654) and near-identical text (36/52 pages identical, mean similarity 0.998). Recognition dominates GPU time (~5 ms per text line). With GPU OCR, DocVQA text costs 0.27 + 0.96 s against 1.57 s for vision, so the text path is cheaper than vision again under scenario C. Decided (Emre, 10 Nov 2026): OCR on the GPU, shared with vLLM as in a single-GPU deployment
 - [x] R · Batch labelling on one Colab L4 (`notebooks/gpu_run.ipynb`), 10–11 Nov 2026: `results/full-qwen3.5-4b/`, 36,915 calls, all (question, path) pairs complete, audit passes, reports reproduce byte-identically. Four sessions: at 80% GPU memory OCR and then vLLM ran out of memory (1,037 failed calls, all retried), so vLLM now gets 65% with `--max-num-seqs 16`; one Colab disconnect. Primary metric over all questions: text 0.607, vision 0.833, hybrid 0.832, oracle 0.875 (+4.2 over vision, 95% CI [+3.9, +4.6], resampling documents) at 1.15 s vs 1.45 s per question (scenario C) and 1,611 vs 3,040 input tokens. Vision and hybrid tie overall (−0.1 [−0.5, +0.3]); TAT-DQA is the exception (hybrid +2.2 [+0.9, +3.6]). Only 7.6% of questions have a single best path, so most of the oracle's gain is cost (text is the cheapest path with GPU OCR). Colab L4 bills ~1.94 compute units per hour
-- [ ] E · Label table: per question and path → primary score, cost; oracle label at chosen tolerance
+- [x] E · Label table (`qdu router labels`, `results/full-qwen3.5-4b/labels.csv`): per question its router split, each path's primary score, model time, C / B / A cost, and the oracle label by latency and by tokens (tolerance 0; identical to the reports' `oracle_labels.csv`)
 
 ### Phase 3 — Signals (H5–H7)
 - [x] H · Compare Tesseract vs PP-OCRv5 on the 300 pilot pages (`qdu ocr compare`, laptop CPU). Answer coverage in the OCR text: Tesseract 0.42, PP-OCRv5 mobile 0.63 (DocVQA 0.65 → 0.72, InfographicVQA 0.34 → 0.51, ChartQA 0.28 → 0.67); 80 pages where only PP-OCRv5 keeps the answer, 17 where only Tesseract does. Time per page 0.6 s vs 24 s, the latter with oneDNN off (paddle 3.3.1), so not representative; with paddle 3.2.2 and oneDNN it is ~1 s per page on the laptop and ~3 s on the Colab CPU. PP-OCRv5 server skipped: several times slower on CPU, and mobile already settles the choice
@@ -113,19 +114,19 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [ ] H · S2 OCR-text features (word count, mean/low confidence share, numeric density)
 - [ ] H · S3 page features (region area shares, table/figure counts, image size)
 - [ ] H · **S4 evidence location**: match question terms to OCR words → where the likely evidence is (text / table / figure region) and how confidently it was read
-- [ ] E · Feature assembly into one table keyed by question id; decision-time measurement
+- [x] E · Feature assembly into one table keyed by question id; decision-time measurement (`qdu router features`: extractor interface `qdu.router.features`, each extractor timed per question and marked if it needs OCR; `QuestionShape` is an example, S1–S4 still to write)
 
 ### Phase 4 — Router & baselines (H6–H10)
 - [ ] E · Per-path quality regressors (Ridge, LightGBM) on S1–S4
 - [ ] E · Decision rule `argmax_p q̂_p − λ·cost_p`; λ selected on validation (cost–quality curve)
 - [ ] E · Two-stage router: stage 1 uses OCR-free signals (S1, image size) and decides when confident; only uncertain questions pay OCR + layout for S2–S4. Its decision cost is part of every router cost figure
-- [ ] E · Cost accounting in reports: scenarios A (tokens), B (OCR once per document, shared by its questions) and C (everything per question, incl. the router's own OCR/layout); computed from logged times, no GPU re-run
+- [x] E · Cost accounting in reports: scenarios A (tokens), B (OCR once per document, shared by its questions) and C (everything per question, incl. the router's own OCR/layout); computed from logged times, no GPU re-run (`qdu.router.evaluate.Policy.cost`: a router declares per question whether it ran OCR, its page-level and per-question signal time)
 - [ ] H · Baselines: always text / vision / hybrid, oracle, EcoDoc-style rules, question-only router (TF-IDF + logistic regression), text→vision confidence cascade
 - [ ] E · Ablations: S1, S1+S2, S1+S2+S3, S1–S4
-- [ ] E · `qdu router train|evaluate` CLI; router artefact versioned with its training manifest hash
+- [ ] E · `qdu router train|evaluate` CLI; router artefact versioned with its training manifest hash (`evaluate` done: baselines and routers from a choices CSV)
 
 ### Phase 5 — Evaluation (H9–H11)
-- [ ] E · Paired bootstrap 95% CIs (router vs each baseline), resampling documents, since full labelling has several questions per document
+- [x] E · Paired bootstrap 95% CIs (router vs each baseline), resampling documents, since full labelling has several questions per document (`qdu.evaluation.bootstrap`; `qdu router evaluate --baseline`)
 - [ ] E/H · Unseen-data test on TAT-DQA
 - [ ] E · Success criteria table — revised after the pilot: the router must beat **always-vision** (more accurate at equal or lower cost), since always-vision is statistically tied with always-hybrid (pilot: -1.7 points, CI includes 0) at half the latency. Original: (cost ≥ 25% below always-hybrid with ≤ 1 ANLS point loss; S4 gain CI excludes 0; TAT-DQA: more accurate than always-text, cheaper than always-hybrid; decision < 50 ms)
 

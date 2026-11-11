@@ -221,6 +221,71 @@ def cmd_ocr_warm(args: argparse.Namespace) -> int:
     return 0
 
 
+DEFAULT_LABELS = Path("results/full-qwen3.5-4b/labels.csv")
+SPLIT_CHOICES = ("train", "val", "test", "all")
+
+
+def _splits(split: str) -> list[str] | None:
+    return None if split == "all" else [split]
+
+
+def cmd_router_labels(args: argparse.Namespace) -> int:
+    from qdu.router import build_labels, write_labels
+
+    rows = build_labels(args.run_dir, args.manifest, tolerance=args.tolerance)
+    out = args.out or args.run_dir / "labels.csv"
+    write_labels(rows, out)
+    by_split: dict[str, int] = {}
+    for r in rows:
+        by_split[r.split] = by_split.get(r.split, 0) + 1
+    splits = ", ".join(f"{k} {v}" for k, v in sorted(by_split.items()))
+    print(f"{len(rows)} questions ({splits}) -> {out}")
+    return 0
+
+
+def cmd_router_evaluate(args: argparse.Namespace) -> int:
+    from qdu.router import read_labels, read_policy
+    from qdu.router.evaluate import evaluate, format_results, write_results
+
+    datasets = _names(args.datasets) if args.datasets else None
+    rows = read_labels(args.labels, splits=_splits(args.split), datasets=datasets)
+    if args.split in ("test", "all"):
+        print(f"Note: split {args.split!r} includes test questions: for the final evaluation only.")
+    try:
+        policies = [read_policy(p) for p in args.choices]
+        results = evaluate(
+            rows, policies, baseline=args.baseline, resamples=args.resamples, seed=args.seed
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"Split {args.split}: {len(rows)} questions; score = primary metric x 100; "
+        "95% CIs resample documents"
+    )
+    print(format_results(results, args.baseline))
+    if args.out:
+        write_results(results, args.out)
+        print(f"\nWrote {args.out}")
+    return 0
+
+
+def cmd_router_features(args: argparse.Namespace) -> int:
+    from qdu.router import EXTRACTORS, build_features, read_labels, router_inputs
+
+    unknown = [e for e in _names(args.extractors) if e not in EXTRACTORS]
+    if unknown:
+        print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
+        return 2
+    extractors = [EXTRACTORS[e]() for e in _names(args.extractors)]
+    rows = read_labels(args.labels, splits=_splits(args.split))
+    table = build_features(router_inputs(rows, args.ocr_cache), extractors)
+    table.write(args.out)
+    n_features = len(next(iter(table.features.values()), {}))
+    print(f"{len(table.features)} questions x {n_features} features -> {args.out}")
+    return 0
+
+
 def _add_ocr_options(parser: argparse.ArgumentParser) -> None:
     from qdu.ocr import OCR_SPECS
 
@@ -331,6 +396,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="cost used to break oracle ties (tokens: written to <run>/cost-tokens/)",
     )
     rep.set_defaults(func=cmd_report)
+
+    router = sub.add_parser("router", help="label table, signals and router evaluation")
+    router_sub = router.add_subparsers(dest="router_command", required=True)
+    lab = router_sub.add_parser("labels", help="label table of a finished run (question x path)")
+    lab.add_argument("run_dir", type=Path)
+    lab.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
+    lab.add_argument("--tolerance", type=float, default=0.0, help="score tie tolerance (oracle)")
+    lab.add_argument("--out", type=Path, help="default <run_dir>/labels.csv")
+    lab.set_defaults(func=cmd_router_labels)
+    ev = router_sub.add_parser(
+        "evaluate", help="baselines and routing choices vs always-vision, with document-level CIs"
+    )
+    ev.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    ev.add_argument("--split", choices=SPLIT_CHOICES, default="val")
+    ev.add_argument("--datasets", help="comma-separated, e.g. docvqa,chartqa (default: all)")
+    ev.add_argument(
+        "--choices",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="CSV per router: question_id,pipeline[,uses_ocr,page_s,question_s]",
+    )
+    ev.add_argument(
+        "--baseline",
+        default="always-vision",
+        help="method the CIs compare against (always-text|vision|hybrid, oracle or a router)",
+    )
+    ev.add_argument("--resamples", type=int, default=1000)
+    ev.add_argument("--seed", type=int, default=0)
+    ev.add_argument("--out", type=Path, help="write the results as CSV")
+    ev.set_defaults(func=cmd_router_evaluate)
+    feat = router_sub.add_parser("features", help="run signal extractors into a feature table")
+    feat.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    feat.add_argument("--split", choices=SPLIT_CHOICES, default="all")
+    feat.add_argument("--extractors", default="q", help="comma-separated extractor names")
+    feat.add_argument("--ocr-cache", type=Path, default=benchmark.DEFAULT_OCR_CACHE)
+    feat.add_argument("--out", type=Path, required=True)
+    feat.set_defaults(func=cmd_router_features)
     return parser
 
 
