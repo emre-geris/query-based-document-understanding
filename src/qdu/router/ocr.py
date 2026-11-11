@@ -14,6 +14,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from qdu.gz import open_gzip_text
 from qdu.ocr.base import OcrLine, OcrResult, cache_file, read_cache
 from qdu.router.labels import LabelRow
 
@@ -57,7 +58,7 @@ def pack_ocr(rows: Iterable[LabelRow], cache_dir: Path, out: Path) -> int:
             f"{len(missing)} pages have no cache file with the run's OCR time, e.g. {missing[:3]}"
         )
     out.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(out, "wt", encoding="utf-8", newline="\n") as f:
+    with open_gzip_text(out) as f:
         for doc_id, r in found.items():
             record = {
                 "doc_id": doc_id,
