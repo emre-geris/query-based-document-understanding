@@ -279,8 +279,11 @@ def cmd_router_features(args: argparse.Namespace) -> int:
         return 2
     extractors = [EXTRACTORS[e]() for e in _names(args.extractors)]
     rows = read_labels(args.labels, splits=_splits(args.split))
+    from qdu.layout import load_layout
+
     ocr = load_ocr(args.ocr) if any(e.needs_ocr for e in extractors) else None
-    table = build_features(router_inputs(rows, ocr), extractors)
+    layout = load_layout(args.layout) if any(e.needs_layout for e in extractors) else None
+    table = build_features(router_inputs(rows, ocr, layout), extractors)
     table.write(args.out)
     n_features = len(next(iter(table.features.values()), {}))
     print(f"{len(table.features)} questions x {n_features} features -> {args.out}")
@@ -297,6 +300,31 @@ def cmd_router_pack_ocr(args: argparse.Namespace) -> int:
         return 2
     print(f"{n} pages -> {args.out}")
     return 0
+
+
+def cmd_layout_detect(args: argparse.Namespace) -> int:
+    import time
+
+    from qdu.data import ImageStore, read_manifest
+    from qdu.layout import PaddleLayout, compress, detect_pages
+
+    records = read_manifest(args.manifest)
+    pages = len({r.doc_id for r in records})
+    detector = PaddleLayout(args.model)
+    print(f"{args.model} on {detector.hardware}: {pages} pages -> {args.work}")
+    start, done = time.perf_counter(), 0
+
+    def on_page(page) -> None:
+        nonlocal done
+        done += 1
+        if done % 100 == 0:
+            elapsed = time.perf_counter() - start
+            print(f"  {done:>5} pages, last {page.latency_s:.3f} s  [{elapsed / 60:.1f} min]")
+
+    n = detect_pages(records, ImageStore().get, detector, args.work, on_page)
+    total = compress(args.work, args.out)
+    print(f"{n} pages detected now; {total} pages -> {args.out}")
+    return 0 if total == pages else 1
 
 
 def _add_ocr_options(parser: argparse.ArgumentParser) -> None:
@@ -349,6 +377,17 @@ def build_parser() -> argparse.ArgumentParser:
     warm.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
     warm.add_argument("--ocr-cache", type=Path, default=benchmark.DEFAULT_OCR_CACHE)
     warm.set_defaults(func=cmd_ocr_warm)
+
+    layout = sub.add_parser("layout", help="layout regions per page (PP-DocLayout)")
+    layout_sub = layout.add_subparsers(dest="layout_command", required=True)
+    detect = layout_sub.add_parser(
+        "detect", help="detect every page of a manifest (resumable), then write one gzip"
+    )
+    detect.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
+    detect.add_argument("--model", default="PP-DocLayout-M")
+    detect.add_argument("--work", type=Path, default=Path("runs/layout.jsonl"))
+    detect.add_argument("--out", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
+    detect.set_defaults(func=cmd_layout_detect)
 
     bench = sub.add_parser("benchmark", help="evaluate the pipelines")
     bench_sub = bench.add_subparsers(dest="benchmark_command", required=True)
@@ -443,8 +482,11 @@ def build_parser() -> argparse.ArgumentParser:
     feat = router_sub.add_parser("features", help="run signal extractors into a feature table")
     feat.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
     feat.add_argument("--split", choices=SPLIT_CHOICES, default="all")
-    feat.add_argument("--extractors", default="q", help="comma-separated extractor names")
+    feat.add_argument("--extractors", default="s1,s2,s3,s4", help="comma-separated names")
     feat.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    feat.add_argument(
+        "--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz")
+    )
     feat.add_argument("--out", type=Path, required=True)
     feat.set_defaults(func=cmd_router_features)
     pack = router_sub.add_parser(

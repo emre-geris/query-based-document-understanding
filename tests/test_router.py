@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,7 @@ from qdu.data import QARecord, write_manifest
 from qdu.ocr.base import OcrLine, OcrResult, cache_file, write_cache
 from qdu.router import (
     Policy,
-    QuestionShape,
+    QuestionSignals,
     build_features,
     build_labels,
     choose,
@@ -205,21 +206,21 @@ def test_features_get_ocr_and_time_extractors(run, tmp_path: Path) -> None:
     pack_ocr(rows, _cache(tmp_path), out)
 
     class OcrWords:
-        name, needs_ocr = "ocr", True
+        name, needs_ocr, needs_layout = "ocr", True, False
 
         def __call__(self, item):
             low = sum(line.score < 0.5 for line in item.ocr.lines)
             return {"words": len(item.ocr.text.split()), "low_conf": low}
 
-    table = build_features(router_inputs(rows, load_ocr(out)), [QuestionShape(), OcrWords()])
+    table = build_features(router_inputs(rows, load_ocr(out)), [QuestionSignals(), OcrWords()])
     assert table.needs_ocr
     assert table.features["docvqa/1"]["ocr_words"] == 2
     assert table.features["docvqa/1"]["ocr_low_conf"] == 1
-    assert table.features["docvqa/1"]["q_wh_what"] == 1.0
-    assert set(table.seconds["docvqa/1"]) == {"q", "ocr"}
+    assert table.features["docvqa/1"]["s1_wh_what"] == 1.0
+    assert set(table.seconds["docvqa/1"]) == {"s1", "ocr"}
     csv_out = tmp_path / "features.csv"
     table.write(csv_out)
-    assert csv_out.read_text().splitlines()[0].startswith("question_id,ocr_low_conf,ocr_words")
+    assert csv_out.read_text().splitlines()[0].startswith("question_id,ocr_low_conf,ocr_words,s1_")
     with pytest.raises(ValueError, match="needs OCR"):
         build_features(router_inputs(rows), [OcrWords()])
     with pytest.raises(ValueError, match="no OCR for 1 pages"):
@@ -241,3 +242,27 @@ def test_cli_labels_and_evaluate(run, tmp_path: Path, capsys) -> None:
     assert "Split val: 2 questions" in out
     assert "text_router" in out
     assert (tmp_path / "eval.csv").exists()
+
+
+def test_cascade_pays_for_both_calls_when_it_escalates(run) -> None:
+    from qdu.router.cascade import answer_confidence, cascade, sweep
+
+    rows = {r.question_id: r for r in build_labels(*run)}
+    confidence = {"docvqa/1": 0.9, "docvqa/2": 0.2}
+    policy = cascade(rows.values(), confidence, 0.5)
+    assert policy.choice == {
+        "docvqa/1": "text",
+        "docvqa/2": "vision",
+        "docvqa/3": "vision",  # no confidence: escalate
+        "chartqa/4": "vision",
+    }
+    r = rows["docvqa/2"]  # text 0.2 s + vision 1.0 s + OCR 0.5 s
+    assert policy.cost(r, "C") == pytest.approx(1.7)
+    assert policy.cost(r, "B") == pytest.approx(1.45)
+    assert policy.cost(r, "A") == 502 + 3002
+    assert policy.cost(rows["docvqa/1"], "C") == pytest.approx(0.7)
+    low, high = sweep(list(rows.values()), confidence, [0.0, 1.1])
+    assert low[3] == 0.5 and high[3] == 0.0  # share kept by text
+    assert answer_confidence([math.log(0.5), math.log(0.5)]) == pytest.approx(0.25)
+    assert answer_confidence([math.log(0.5), math.log(1.0)], "mean_token") == pytest.approx(0.75)
+    assert answer_confidence([math.log(0.5), math.log(1.0)], "min_token") == pytest.approx(0.5)

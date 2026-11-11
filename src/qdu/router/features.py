@@ -6,11 +6,10 @@ uses it (scenario C), and its time per question is measured, since the decision 
 under 50 ms. Loading the image is not timed (the path that answers decodes it anyway), nor is
 the OCR, whose time is charged separately from the label table.
 
-S1-S4 are to be written as extractors like `QuestionShape`, an example S1-style extractor.
+The project's signals S1-S4 are in `qdu.router.signals`.
 """
 
 import csv
-import re
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -18,6 +17,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from qdu.layout import PageLayout
 from qdu.ocr.base import OcrResult
 from qdu.router.labels import LabelRow
 
@@ -34,6 +34,8 @@ class RouterInput:
     question: str
     ocr: OcrResult | None = field(default=None, repr=False)
     """The page's OCR from the run (text, lines with confidences and boxes, page size)."""
+    layout: PageLayout | None = field(default=None, repr=False)
+    """The page's layout regions (`qdu.layout`)."""
     _image: Callable[[], "Image"] | None = field(default=None, repr=False)
 
     @cached_property
@@ -47,6 +49,7 @@ class FeatureExtractor(Protocol):
     name: str
     """Prefix of the extractor's feature names, e.g. ``s1``."""
     needs_ocr: bool
+    needs_layout: bool
 
     def __call__(self, item: RouterInput) -> Mapping[str, float]: ...
 
@@ -54,22 +57,26 @@ class FeatureExtractor(Protocol):
 def router_inputs(
     rows: Iterable[LabelRow],
     ocr: Mapping[str, OcrResult] | None = None,
+    layout: Mapping[str, PageLayout] | None = None,
     *,
     images: Callable[[LabelRow], "Image"] | None = None,
 ) -> list[RouterInput]:
-    """Inputs for ``rows``. ``ocr`` maps page ids to OCR (`qdu.router.ocr.load_ocr`); a page
-    missing from it is an error, so an OCR signal never silently sees no text."""
+    """Inputs for ``rows``. ``ocr`` (`qdu.router.ocr.load_ocr`) and ``layout``
+    (`qdu.layout.load_layout`) map page ids to the page's OCR and regions; a page missing from
+    either is an error, so a signal never silently sees an empty page."""
     rows = list(rows)
-    if ocr is not None:
-        missing = sorted({r.doc_id for r in rows} - set(ocr))
-        if missing:
-            raise ValueError(f"no OCR for {len(missing)} pages, e.g. {missing[:3]}")
+    for name, pages in (("OCR", ocr), ("layout", layout)):
+        if pages is not None:
+            missing = sorted({r.doc_id for r in rows} - set(pages))
+            if missing:
+                raise ValueError(f"no {name} for {len(missing)} pages, e.g. {missing[:3]}")
     return [
         RouterInput(
             r.question_id,
             r.doc_id,
             r.question,
             ocr[r.doc_id] if ocr is not None else None,
+            layout[r.doc_id] if layout is not None else None,
             (lambda r=r: images(r)) if images else None,
         )
         for r in rows
@@ -83,6 +90,24 @@ class FeatureTable:
     seconds: dict[str, dict[str, float]]
     """question id -> extractor name -> time it took."""
     needs_ocr: bool
+    needs_layout: bool = False
+
+    def router_cost(
+        self, layout: Mapping[str, PageLayout] | None = None, doc_of: Mapping[str, str] = {}
+    ) -> dict[str, dict]:
+        """What a router built on these features pays per question, as ``uses_ocr``,
+        ``page_s`` and ``question_s`` for `qdu.router.Policy` / `route`: OCR if any extractor
+        read it, the page's layout time if any used layout, and the extractors' own time."""
+        if self.needs_layout and (layout is None or not doc_of):
+            raise ValueError("layout signals: pass the layout and each question's doc_id")
+        return {
+            "uses_ocr": dict.fromkeys(self.features, self.needs_ocr),
+            "page_s": {
+                q: layout[doc_of[q]].latency_s if self.needs_layout else 0.0  # type: ignore[index]
+                for q in self.features
+            },
+            "question_s": {q: sum(t.values()) for q, t in self.seconds.items()},
+        }
 
     def write(self, path: Path) -> None:
         names = sorted({k for f in self.features.values() for k in f})
@@ -107,9 +132,13 @@ def build_features(
     """Run every extractor on every item; feature names get the extractor's prefix."""
     features: dict[str, dict[str, float]] = {}
     seconds: dict[str, dict[str, float]] = {}
+    needs_ocr = any(e.needs_ocr for e in extractors)
+    needs_layout = any(getattr(e, "needs_layout", False) for e in extractors)
     for item in items:
-        if item.ocr is None and any(e.needs_ocr for e in extractors):
+        if item.ocr is None and needs_ocr:
             raise ValueError(f"{item.question_id}: an extractor needs OCR but none was given")
+        if item.layout is None and needs_layout:
+            raise ValueError(f"{item.question_id}: an extractor needs layout but none was given")
         row: dict[str, float] = {}
         times: dict[str, float] = {}
         for e in extractors:
@@ -119,28 +148,4 @@ def build_features(
             row.update({f"{e.name}_{k}": float(v) for k, v in values.items()})
         features[item.question_id] = row
         seconds[item.question_id] = times
-    return FeatureTable(features, seconds, any(e.needs_ocr for e in extractors))
-
-
-_WH = ("what", "which", "who", "when", "where", "how many", "how much", "how", "why")
-_NUMERIC = re.compile(r"\b(how many|how much|total|sum|difference|average|percent|%|ratio)\b")
-_VISUAL = re.compile(r"\b(colou?r|chart|graph|bar|line|figure|image|logo|icon|shown|left|right)\b")
-
-
-@dataclass(frozen=True)
-class QuestionShape:
-    """Example extractor (S1-style, no OCR): length, wh-word and cue words of the question."""
-
-    name: str = "q"
-    needs_ocr: bool = False
-
-    def __call__(self, item: RouterInput) -> dict[str, float]:
-        text = item.question.lower()
-        wh = next((w for w in _WH if text.startswith(w) or f" {w} " in text), "other")
-        return {
-            "n_words": len(text.split()),
-            "has_digit": any(c.isdigit() for c in text),
-            "numeric_cue": bool(_NUMERIC.search(text)),
-            "visual_cue": bool(_VISUAL.search(text)),
-            **{f"wh_{w.replace(' ', '_')}": wh == w for w in (*_WH, "other")},
-        }
+    return FeatureTable(features, seconds, needs_ocr, needs_layout)
