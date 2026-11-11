@@ -43,6 +43,16 @@ Never use `pip install` or edit `uv.lock` by hand.
 - The `fake` model is for tests and wiring checks only; its numbers must never be reported.
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`), one logical change per commit.
 
+## Router work
+
+The GPU work is done; the router is built on a laptop from committed files. Read `docs/router.md` before starting. The rules that keep its numbers valid:
+
+- **Inputs:** `results/full-qwen3.5-4b/labels.csv` (`qdu.router.read_labels`) and the run's OCR, `results/full-qwen3.5-4b/ocr.jsonl.gz` (`qdu.router.load_ocr`). Never re-OCR pages on a laptop for signals: the text would differ from what the paths saw and the time from what the label table charges. Page images come from `uv run qdu data download`.
+- **Splits:** fit on `train`; choose features, models and λ on `val`; run `test` once at the end. TAT-DQA is test-only (unseen data). Never re-split by question.
+- **Signals** see only the question, page image and OCR (`RouterInput`), never gold answers, a path's answer or score, and not the dataset name (a deployed router does not know it; allowed only in a labelled ablation). Each signal is a `FeatureExtractor` registered in `qdu.router.EXTRACTORS`, declares `needs_ocr`, and is timed per question (decision < 50 ms).
+- **Cost:** a router pays for itself. A router's choices CSV declares per question `uses_ocr`, `page_s` (layout etc.) and `question_s`; `qdu router evaluate` charges OCR to every question whose signals used it, even when vision is chosen.
+- **Evaluation** goes through `qdu router evaluate` (baselines, scenarios C/B/A, paired bootstrap over documents against always-vision or `--baseline`); never report a router number computed another way.
+
 ## Environment notes
 
 - Primary development is on Windows. Tesseract is expected on `PATH` or at `C:\Program Files\Tesseract-OCR\tesseract.exe`.
@@ -68,7 +78,7 @@ Each source uses its **labelled evaluation split**, not its training split: offi
 
 ## Roadmap
 
-Source of truth for what to build next. Design follows the MFK420 pre-presentation (Oct 2026); deviations are allowed when they improve the system, but record them under *Decisions*. Mark items `[x]` in the same commit that completes them. Weeks refer to the 14-week plan (H1 = 5 Oct).
+Source of truth for what to build next. **Where things stand (11 Nov 2026):** Phases 0–2 are done and the router infrastructure exists (label table, run OCR in one file, cost accounting, bootstrap, `qdu router labels|evaluate|features|pack-ocr`). Next: Phase 3 signals (layout, S1–S4), then the Phase 4 quality models and λ. Open items are the unchecked boxes below. Design follows the MFK420 pre-presentation (Oct 2026); deviations are allowed when they improve the system, but record them under *Decisions*. Mark items `[x]` in the same commit that completes them. Weeks refer to the 14-week plan (H1 = 5 Oct).
 
 **Ordering rule.** Phases group work by goal and deadline, not strict sequence. Work that only pays off if the pilot shows a usable gap (Phase 3–4: signals, router, full labelling) does not start before the go/no-go on 30 Oct. Small items needed in either outcome (data, splits, tooling) may be pulled forward; move such an item into the phase where it is actually needed.
 
@@ -110,18 +120,18 @@ Source of truth for what to build next. Design follows the MFK420 pre-presentati
 - [x] Compare Tesseract vs PP-OCRv5 on the 300 pilot pages (`qdu ocr compare`, laptop CPU). Answer coverage in the OCR text: Tesseract 0.42, PP-OCRv5 mobile 0.63 (DocVQA 0.65 → 0.72, InfographicVQA 0.34 → 0.51, ChartQA 0.28 → 0.67); 80 pages where only PP-OCRv5 keeps the answer, 17 where only Tesseract does. Time per page 0.6 s vs 24 s, the latter with oneDNN off (paddle 3.3.1), so not representative; with paddle 3.2.2 and oneDNN it is ~1 s per page on the laptop and ~3 s on the Colab CPU. PP-OCRv5 server skipped: several times slower on CPU, and mobile already settles the choice
 - [ ] OCR with word boxes + confidences: PP-OCRv5 lines (text, confidence, box) and the page size are stored in the OCR cache (`OcrResult.lines`), so the full-run pre-pass already provides them (all pages packed into `results/full-qwen3.5-4b/ocr.jsonl.gz` by `qdu router pack-ocr`, since the per-page cache files clash on Windows and in Drive zips); Tesseract 5 `image_to_data` still to add for the cheap baseline
 - [ ] Layout detection with PP-DocLayout (PaddleOCR 3.x; S/M variant first for speed, V3 if accuracy needs it): text / table / figure regions per page, cached; its time is reported next to the < 50 ms router decision time
-- [ ] S1 question features (wh-type, numeric/visual cue words, length, TF-IDF)
+- [ ] S1 question features (wh-type, numeric/visual cue words, length, TF-IDF); `qdu.router.features.QuestionShape` is a starting example without TF-IDF
 - [ ] S2 OCR-text features (word count, mean/low confidence share, numeric density)
-- [ ] S3 page features (region area shares, table/figure counts, image size)
+- [ ] S3 page features (region area shares, table/figure counts, image size); needs the page images (`qdu data download`) and the layout regions
 - [ ] **S4 evidence location**: match question terms to OCR words → where the likely evidence is (text / table / figure region) and how confidently it was read
 - [x] Feature assembly into one table keyed by question id; decision-time measurement (`qdu router features`: extractor interface `qdu.router.features`, each extractor timed per question and marked if it needs OCR; `QuestionShape` is an example, S1–S4 still to write)
 
 ### Phase 4 — Router & baselines (H6–H10)
 - [ ] Per-path quality regressors (Ridge, LightGBM) on S1–S4
-- [ ] Decision rule `argmax_p q̂_p − λ·cost_p`; λ selected on validation (cost–quality curve)
+- [ ] Decision rule `argmax_p q̂_p − λ·cost_p`; λ selected on validation (cost–quality curve). The rule, mean training costs and the curve exist (`qdu.router.policy`); what remains is choosing λ once the quality models exist
 - [ ] Two-stage router: stage 1 uses OCR-free signals (S1, image size) and decides when confident; only uncertain questions pay OCR + layout for S2–S4. Its decision cost is part of every router cost figure
 - [x] Cost accounting in reports: scenarios A (tokens), B (OCR once per document, shared by its questions) and C (everything per question, incl. the router's own OCR/layout); computed from logged times, no GPU re-run (`qdu.router.evaluate.Policy.cost`: a router declares per question whether it ran OCR, its page-level and per-question signal time)
-- [ ] Baselines: always text / vision / hybrid, oracle, EcoDoc-style rules, question-only router (TF-IDF + logistic regression), text→vision confidence cascade
+- [ ] Baselines: always text / vision / hybrid, oracle, EcoDoc-style rules, question-only router (TF-IDF + logistic regression), text→vision confidence cascade. Always-* and oracle are built into `qdu router evaluate`. The cascade needs a confidence for the text answer, but the run logged no token log-probabilities: use a proxy (e.g. OCR confidence of the words matched by the answer) or re-run the text path with logprobs (GPU; the project lead decides)
 - [ ] Ablations: S1, S1+S2, S1+S2+S3, S1–S4
 - [ ] `qdu router train|evaluate` CLI; router artefact versioned with its training manifest hash (`evaluate` done: baselines and routers from a choices CSV)
 
