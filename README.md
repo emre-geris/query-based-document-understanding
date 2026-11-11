@@ -32,8 +32,8 @@ flowchart LR
 | Component | Status |
 |---|---|
 | Text, vision and hybrid pipelines | done (model-provider independent) |
-| OCR (Tesseract, cached; PP-OCRv5 optional) | done |
-| Benchmark: DocVQA, InfographicVQA, ChartQA, TAT-DQA; per-dataset metric, cost, routing oracle | done; pilot in `results/pilot-qwen3.5-4b` |
+| OCR (PP-OCRv5 on the GPU via RapidOCR; Tesseract as the cheap baseline; cached per page) | done |
+| Benchmark: DocVQA, InfographicVQA, ChartQA, TAT-DQA; per-dataset metric, cost, routing oracle | done; full labelling (12,305 questions × 3 paths) in `results/full-qwen3.5-4b`, pilot in `results/pilot-qwen3.5-4b` |
 | Model | Qwen3.5-4B via vLLM, `openai:<model>` provider (`fake` for tests) |
 | Router | next: trained on the routing oracle's labels |
 
@@ -102,7 +102,7 @@ answers are meaningless and must never be reported.
 
 | | |
 |---|---|
-| Data | DocVQA and InfographicVQA validation, ChartQA test (labelled evaluation splits; see CLAUDE.md) |
+| Data | DocVQA and InfographicVQA validation, ChartQA and TAT-DQA test (labelled evaluation splits; see CLAUDE.md) |
 | Pilot sample | 100 questions per dataset from the router-train split, at most one per document, stratified by question type, seed 42 |
 | Full labelling | every question × 3 paths; confidence intervals resample documents |
 | Metric | each dataset's conventional metric: ANLS (DocVQA, InfographicVQA), relaxed accuracy (ChartQA), F1 (TAT-DQA); all four reported for every dataset |
