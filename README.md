@@ -35,7 +35,7 @@ flowchart LR
 | OCR (PP-OCRv5 on the GPU via RapidOCR; Tesseract as the cheap baseline; cached per page) | done |
 | Benchmark: DocVQA, InfographicVQA, ChartQA, TAT-DQA; per-dataset metric, cost, routing oracle | done; full labelling (12,305 questions × 3 paths) in `results/full-qwen3.5-4b`, pilot in `results/pilot-qwen3.5-4b` |
 | Model | Qwen3.5-4B via vLLM, `openai:<model>` provider (`fake` for tests) |
-| Router | next: trained on the routing oracle's labels |
+| Router | label table, cost accounting (incl. the router's own OCR), document-level bootstrap and `qdu router evaluate` done; signals S1–S4 and the quality models next (`docs/router.md`) |
 
 ## Repository layout
 
@@ -46,7 +46,8 @@ src/qdu/
   models/           Provider-independent LLM/VLM interface (+ a fake model for tests)
   ocr/              OCR engines (Tesseract, PP-OCRv5; cached per page)
   data/             Dataset registry (DocVQA, InfographicVQA, ChartQA, TAT-DQA), document-level splits, manifests, sampling
-  evaluation/       ANLS, relaxed accuracy, EM/F1, per-dataset primary metric, routing oracle
+  evaluation/       ANLS, relaxed accuracy, EM/F1, per-dataset primary metric, routing oracle, document-level bootstrap
+  router/           Label table, signal extractors, decision rule, evaluation against the baselines
   benchmark.py      Sample -> run -> report
   runner.py         Resumable pipeline runs -> scored predictions (JSONL)
   provenance.py     Run metadata (git commit, versions) written next to every result
@@ -54,6 +55,7 @@ tests/              pytest suite
 benchmarks/         Committed benchmark samples (question manifests)
 results/            Committed results of finished GPU runs, each with a README
 notebooks/          GPU runbook (Colab)
+docs/               Guides (router hand-off: docs/router.md)
 runs/               Benchmark run outputs (gitignored)
 data/               Local caches (gitignored)
 ```
@@ -89,6 +91,11 @@ uv run qdu benchmark sample --all-questions --split all --out benchmarks/<name>.
 uv run qdu benchmark run --text-model <spec> --vision-model <spec> --manifest <csv> --name <run>  # resumable
 uv run qdu benchmark report runs/<run-name> [--cost tokens]       # metrics, cost, oracle
 uv run qdu benchmark rescore runs/<run-name>                       # re-derive answers after a clean_answer change
+
+# Router (laptop, no GPU; see docs/router.md)
+uv run qdu router labels results/<run>                             # label table: score and cost per question and path
+uv run qdu router features --extractors q --out runs/features.csv  # signals into a feature table, timed
+uv run qdu router evaluate --split val --choices runs/<router>.csv # vs always-vision, 95% CIs over documents
 ```
 
 ### Running on a GPU (Colab)
