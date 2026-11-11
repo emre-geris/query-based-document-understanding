@@ -21,6 +21,8 @@ def test_reads_rendered_text() -> None:
     assert "1975" in result.text
     assert not result.cached
     assert result.engine.startswith("tesseract-")
+    assert result.lines and "1975" in result.lines[0].text
+    assert 0 < result.lines[0].score <= 1
 
 
 @requires_tesseract
@@ -31,7 +33,7 @@ def test_second_call_is_served_from_cache(tmp_path: Path, monkeypatch: pytest.Mo
     def fail(*args: object, **kwargs: object) -> str:
         raise AssertionError("tesseract should not run for a cached page")
 
-    monkeypatch.setattr(ocr._pytesseract, "image_to_string", fail)
+    monkeypatch.setattr(ocr._pytesseract, "image_to_data", fail)
     second = ocr.extract(render("CACHE ME"), key="doc1")
     assert second.cached
     assert second.text == first.text
@@ -119,3 +121,25 @@ def test_long_cache_keys_are_shortened(tmp_path) -> None:
     path = cache_file(tmp_path, key)
     assert len(path.name) < 100
     assert path != cache_file(tmp_path, key + "2")
+
+
+def test_lines_from_tesseract_data_group_words_and_paragraphs() -> None:
+    from qdu.ocr.tesseract import lines_from_data
+
+    data = {
+        "text": ["", "Total", "1,250", "Notes", "  ", "here"],
+        "conf": [-1, 90, 70, 80, -1, 60],
+        "block_num": [1, 1, 1, 2, 2, 2],
+        "par_num": [1, 1, 1, 1, 1, 1],
+        "line_num": [1, 1, 1, 1, 1, 1],
+        "left": [0, 10, 60, 10, 0, 70],
+        "top": [0, 5, 5, 50, 0, 52],
+        "width": [0, 40, 30, 50, 0, 30],
+        "height": [0, 10, 12, 10, 0, 10],
+    }
+    text, lines = lines_from_data(data)
+    assert text == "Total 1,250\n\nNotes here"
+    assert lines[0].text == "Total 1,250"
+    assert lines[0].score == 0.8
+    assert lines[0].box == (10, 5, 90, 17)
+    assert lines[1].box == (10, 50, 100, 62)
