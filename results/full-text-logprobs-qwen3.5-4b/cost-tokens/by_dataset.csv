@@ -1,0 +1,6 @@
+dataset,n,text,oracle,best_single,headroom
+ALL,12305,0.6052,0.6052,text,0.0000
+chartqa,2500,0.4212,0.4212,text,0.0000
+docvqa,5349,0.7743,0.7743,text,0.0000
+infographicvqa,2801,0.4766,0.4766,text,0.0000
+tatdqa,1655,0.5544,0.5544,text,0.0000

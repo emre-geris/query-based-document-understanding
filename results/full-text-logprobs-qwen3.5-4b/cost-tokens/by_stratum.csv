@@ -1,0 +1,27 @@
+stratum,n,text,oracle,best_single,headroom
+ALL,12305,0.6052,0.6052,text,0.0000
+chartqa/augmented,1250,0.4480,0.4480,text,0.0000
+chartqa/human,1250,0.3944,0.3944,text,0.0000
+docvqa/Image/Photo,98,0.5095,0.5095,text,0.0000
+docvqa/Yes/No,28,0.7364,0.7364,text,0.0000
+docvqa/figure/diagram,259,0.5250,0.5250,text,0.0000
+docvqa/form,784,0.8427,0.8427,text,0.0000
+docvqa/free_text,688,0.8604,0.8604,text,0.0000
+docvqa/handwritten,303,0.4881,0.4881,text,0.0000
+docvqa/layout,1331,0.7929,0.7929,text,0.0000
+docvqa/others,233,0.7906,0.7906,text,0.0000
+docvqa/table/list,1625,0.7970,0.7970,text,0.0000
+infographicvqa/arithmetic,290,0.4009,0.4009,text,0.0000
+infographicvqa/comparison,272,0.4582,0.4582,text,0.0000
+infographicvqa/counting,285,0.2211,0.2211,text,0.0000
+infographicvqa/multi-span,180,0.3737,0.3737,text,0.0000
+infographicvqa/non-extractive,3,0.6667,0.6667,text,0.0000
+infographicvqa/question span,156,0.5688,0.5688,text,0.0000
+infographicvqa/single span,1615,0.5407,0.5407,text,0.0000
+tatdqa/arithmetic,100,0.3200,0.3200,text,0.0000
+tatdqa/count,40,0.5500,0.5500,text,0.0000
+tatdqa/million,208,0.5208,0.5208,text,0.0000
+tatdqa/multi-span,209,0.8450,0.8450,text,0.0000
+tatdqa/percent,290,0.1138,0.1138,text,0.0000
+tatdqa/span,535,0.7675,0.7675,text,0.0000
+tatdqa/thousand,273,0.4945,0.4945,text,0.0000
