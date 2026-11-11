@@ -40,18 +40,21 @@ class Policy:
     """Per-page signal time other than OCR, e.g. layout detection (shared by the page in B)."""
     question_s: Mapping[str, float] = field(default_factory=dict)
     """Per-question signal and decision time."""
+    called_before: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    """Paths a cascade called (and paid for) before the one whose answer it kept."""
 
     def cost(self, row: LabelRow, scenario: str) -> float:
-        path = self.choice[row.question_id]
+        qid = row.question_id
+        paths = (*self.called_before.get(qid, ()), self.choice[qid])
         if scenario == "A":
-            return row.tokens[path]
-        ocr = PATH_USES_OCR[path] or self.uses_ocr.get(row.question_id, False)
-        page = (row.ocr_s if ocr else 0.0) + self.page_s.get(row.question_id, 0.0)
+            return sum(row.tokens[p] for p in paths)
+        ocr = any(PATH_USES_OCR[p] for p in paths) or self.uses_ocr.get(qid, False)
+        page = (row.ocr_s if ocr else 0.0) + self.page_s.get(qid, 0.0)  # OCR runs once
         if scenario == "B":
             page /= row.questions_on_page
         elif scenario != "C":
             raise ValueError(f"unknown scenario {scenario!r}; choose C, B or A")
-        return row.model_s[path] + page + self.question_s.get(row.question_id, 0.0)
+        return sum(row.model_s[p] for p in paths) + page + self.question_s.get(qid, 0.0)
 
 
 def baselines(rows: Iterable[LabelRow], paths: Sequence[str] = PATHS) -> list[Policy]:
