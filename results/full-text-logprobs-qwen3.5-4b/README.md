@@ -12,7 +12,7 @@ log-probability of every generated token.
   thinking off, greedy, max 64 tokens, caches off, vLLM at 65% GPU memory with
   `--max-num-seqs 16`; OCR read from the same PP-OCRv5 cache, so the prompts are identical.
 - Code: commit `da228db` (`run_info.json`); runbook preset `RUN = "text-logprobs"`.
-- One session, 11 Nov 2026 ~17:40–19:05 UTC: 12,305 calls, none failed; the 52-question
+- One session, 11 Nov 2026 17:38–19:07 UTC: 12,305 calls, none failed; the 52-question
   shared-GPU check passed first. Audit passes; reports regenerated on a laptop are
   byte-identical to the Colab ones.
 

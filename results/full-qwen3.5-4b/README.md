@@ -24,7 +24,9 @@ tokens (`cost-tokens/`), and `labels.csv` (`qdu router labels`): one row per que
 router split, every path's score and C / B / A cost, and both oracle labels, the starting
 point for router training (`docs/router.md`), and `ocr.jsonl.gz` (`qdu router pack-ocr`): the
 OCR of all 3,586 pages as the run used it (text, lines with confidence and box, page size, time),
-checked against every row's OCR time and character count.
+checked against every row's OCR time and character count, and `layout.jsonl.gz`
+(`qdu layout detect`, laptop CPU): PP-DocLayout-M regions of every page, for the router's
+page and evidence signals.
 
 ## Results
 
@@ -106,3 +108,8 @@ Four Colab sessions (`run_history.jsonl`):
 - The oracle has no signal cost; a real router pays for its own OCR and layout (scenario C)
   and will not reach it.
 - Questions per document vary (DocVQA ~4.2 per page, ChartQA ~1.7), so CIs resample documents.
+- **Labels come from one run.** Re-running the text path with identical prompts and greedy
+  decoding (`results/full-text-logprobs-qwen3.5-4b`) changed 287 answers (2.3%; bf16 GPU
+  arithmetic is not bit-reproducible) and moved dataset means by at most 0.3 points; vision and
+  hybrid presumably vary alike. The bootstrap CIs cover sampling of documents, not this
+  run-to-run variation, so path differences of a few tenths of a point are within it.
