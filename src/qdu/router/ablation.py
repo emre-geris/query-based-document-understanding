@@ -11,13 +11,17 @@ two ways, both fitted on ``train`` and measured on ``val``:
 - **Routing**: the learned per-path router (`qdu.router.train`) on that configuration, with λ
   chosen within the always-vision C budget, as score and C cost.
 
+Differences in ``text_ok`` AUC between configurations (e.g. what S4 adds to S1-S3, and S1-S4
+against the question alone, the presentation's criterion 2) get paired bootstrap 95% CIs that
+resample documents (``auc_comparisons``).
+
 The ``dataset`` group is the dataset name as one-hot features. A deployed router does not know
 it, so it only appears in configurations labelled as a leakage check (CLAUDE.md, *Router work*).
 """
 
 import csv
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +70,8 @@ class AblationResult:
     cost: float
     lam: float
     uses_ocr: bool
+    p_text_ok: dict[str, float] = field(default_factory=dict, repr=False)
+    """Validation probability that text is as good as vision, per question."""
 
 
 def with_dataset(rows: Sequence[LabelRow], features: Features) -> dict[str, dict[str, float]]:
@@ -97,8 +103,9 @@ def _design(rows, features, names, tfidf, vectorizer, fit):
 
 def predictability(
     train: Sequence[LabelRow], val: Sequence[LabelRow], features: Features, tfidf: bool, seed: int
-) -> tuple[dict[str, float], float]:
-    """Validation AUC per target, and the mean within-dataset AUC of ``text_ok``."""
+) -> tuple[dict[str, float], float, dict[str, float]]:
+    """Validation AUC per target, the mean within-dataset AUC of ``text_ok`` and its
+    predicted probability per question."""
     import lightgbm as lgb
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics import roc_auc_score
@@ -107,7 +114,7 @@ def predictability(
     vectorizer = TfidfVectorizer(min_df=3, ngram_range=(1, 2), sublinear_tf=True)
     x_train = _design(train, features, names, tfidf, vectorizer, True)
     x_val = _design(val, features, names, tfidf, vectorizer, False)
-    auc, within = {}, float("nan")
+    auc, within, p_text_ok = {}, float("nan"), {}
     for target, label in TARGETS.items():
         y_train = np.array([label(r) for r in train], dtype=int)
         y_val = np.array([label(r) for r in val], dtype=int)
@@ -128,13 +135,14 @@ def predictability(
         p = model.predict_proba(x_val)[:, 1]
         auc[target] = float(roc_auc_score(y_val, p)) if len(set(y_val)) == 2 else float("nan")
         if target == "text_ok":
+            p_text_ok = {r.question_id: float(v) for r, v in zip(val, p, strict=True)}
             per = []
             for d in sorted({r.dataset for r in val}):
                 mask = np.array([r.dataset == d for r in val])
                 if len(set(y_val[mask])) == 2:
                     per.append(roc_auc_score(y_val[mask], p[mask]))
             within = float(np.mean(per)) if per else float("nan")
-    return auc, within
+    return auc, within, p_text_ok
 
 
 def config_cost(
@@ -178,7 +186,7 @@ def run_ablation(
     out = []
     for config in configs:
         feats = _subset(features, config.groups)
-        auc, within = predictability(train, val, feats, config.tfidf, seed)
+        auc, within, p = predictability(train, val, feats, config.tfidf, seed)
         cost = config_cost(config, ids, seconds, layout_s, needs_ocr, needs_layout)
         uses_ocr = any(cost["uses_ocr"].values())
         trained = train_router(
@@ -186,9 +194,92 @@ def run_ablation(
         )
         best = next(c for c in trained.curve if c.lam == trained.lam)
         out.append(
-            AblationResult(config, auc, within, best.score, best.cost, trained.lam, uses_ocr)
+            AblationResult(config, auc, within, best.score, best.cost, trained.lam, uses_ocr, p)
         )
     return out
+
+
+DEFAULT_COMPARISONS = (
+    ("S1+S2", "S1", "S2 (OCR text) over S1"),
+    ("S1+S2+S3", "S1+S2", "S3 (layout) over S1+S2"),
+    ("S1-S4", "S1+S2+S3", "S4 (evidence location) over S1-S3"),
+    ("S1-S4", "tfidf only", "S1-S4 over the question alone (criterion 2)"),
+)
+
+
+@dataclass(frozen=True)
+class AucComparison:
+    label: str
+    method: str
+    baseline: str
+    estimate: float
+    low: float
+    high: float
+
+    @property
+    def excludes_zero(self) -> bool:
+        return self.low > 0 or self.high < 0
+
+
+def auc_comparisons(
+    results: Sequence[AblationResult],
+    val: Sequence[LabelRow],
+    pairs: Sequence[tuple[str, str, str]] = DEFAULT_COMPARISONS,
+    *,
+    resamples: int = 1000,
+    seed: int = 0,
+    level: float = 0.95,
+) -> list[AucComparison]:
+    """Paired bootstrap CI of the ``text_ok`` AUC difference ``method - baseline`` for each
+    ``(method, baseline, label)`` pair of configuration names, resampling documents (all
+    questions of a drawn document are kept) with a seeded generator."""
+    import random
+    from collections import defaultdict
+
+    from sklearn.metrics import roc_auc_score
+
+    by_name = {r.config.name: r for r in results}
+    y = {r.question_id: int(TARGETS["text_ok"](r)) for r in val}
+    by_doc: dict[str, list[str]] = defaultdict(list)
+    for r in val:
+        by_doc[r.doc_id].append(r.question_id)
+    docs = sorted(by_doc)
+    out = []
+    for method, baseline, label in pairs:
+        if method not in by_name or baseline not in by_name:
+            continue
+        pm, pb = by_name[method].p_text_ok, by_name[baseline].p_text_ok
+        ids = [q for d in docs for q in by_doc[d]]
+        estimate = roc_auc_score([y[q] for q in ids], [pm[q] for q in ids]) - roc_auc_score(
+            [y[q] for q in ids], [pb[q] for q in ids]
+        )
+        rng = random.Random(seed)
+        diffs = []
+        for _ in range(resamples):
+            sample = [q for d in rng.choices(docs, k=len(docs)) for q in by_doc[d]]
+            labels = [y[q] for q in sample]
+            if len(set(labels)) < 2:
+                continue
+            diffs.append(
+                roc_auc_score(labels, [pm[q] for q in sample])
+                - roc_auc_score(labels, [pb[q] for q in sample])
+            )
+        diffs.sort()
+        tail = (1 - level) / 2
+        low = diffs[int(tail * (len(diffs) - 1))]
+        high = diffs[int((1 - tail) * (len(diffs) - 1))]
+        out.append(AucComparison(label, method, baseline, float(estimate), low, high))
+    return out
+
+
+def format_comparisons(comparisons: Sequence[AucComparison]) -> str:
+    lines = [f"  {'comparison':<48}{'AUC diff':>9}   95% CI            CI excludes 0"]
+    for c in comparisons:
+        lines.append(
+            f"  {c.label:<48}{c.estimate:>+9.3f}   [{c.low:+.3f}, {c.high:+.3f}]"
+            f"   {'yes' if c.excludes_zero else 'no'}"
+        )
+    return "\n".join(lines)
 
 
 def format_ablation(results: Sequence[AblationResult]) -> str:

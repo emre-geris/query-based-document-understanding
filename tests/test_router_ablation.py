@@ -4,9 +4,12 @@ from pathlib import Path
 import pytest
 
 from qdu.router.ablation import (
+    AblationResult,
     Config,
+    auc_comparisons,
     config_cost,
     format_ablation,
+    format_comparisons,
     run_ablation,
     with_dataset,
     write_ablation,
@@ -94,3 +97,21 @@ def test_run_ablation_finds_the_informative_signal(data, tmp_path: Path):
     lines = (tmp_path / "ablation.csv").read_text(encoding="utf-8").splitlines()
     assert lines[0].startswith("configuration,groups,tfidf,auc_text_ok")
     assert len(lines) == 3
+
+
+def test_auc_comparisons_paired_bootstrap(data):
+    rows, *_ = data
+    val = [r for r in rows if r.split == "val"]
+    perfect = {r.question_id: float(r.score["text"] >= r.score["vision"]) for r in val}
+    flat = dict.fromkeys(perfect, 0.5)
+    results = [
+        AblationResult(Config("good", ()), {}, 0.0, 0.0, 0.0, 0.0, False, perfect),
+        AblationResult(Config("flat", ()), {}, 0.0, 0.0, 0.0, 0.0, False, flat),
+    ]
+    pairs = (("good", "flat", "good over flat"), ("good", "good", "same"), ("x", "flat", "skip"))
+    better, same = auc_comparisons(results, val, pairs, resamples=200)
+    assert better.estimate == pytest.approx(0.5)
+    assert better.excludes_zero and better.low > 0.4
+    assert (same.estimate, same.low, same.high) == (0.0, 0.0, 0.0)
+    assert not same.excludes_zero
+    assert "good over flat" in format_comparisons([better, same])
