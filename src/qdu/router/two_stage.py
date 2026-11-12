@@ -32,6 +32,26 @@ from qdu.router.labels import LabelRow
 
 Features = Mapping[str, Mapping[str, float]]
 
+
+def lgbm_params(seed: int = 0, **overrides) -> dict:
+    """LightGBM settings shared by the two-stage and variant classifiers (deterministic)."""
+    return {
+        "n_estimators": 400,
+        "learning_rate": 0.03,
+        "num_leaves": 15,
+        "min_child_samples": 30,
+        "subsample": 0.8,
+        "subsample_freq": 1,
+        "colsample_bytree": 0.8,
+        "random_state": seed,
+        "deterministic": True,
+        "force_row_wise": True,
+        "n_jobs": 1,
+        "verbose": -1,
+        **overrides,
+    }
+
+
 T1 = (0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1.01)
 T2 = (0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 1.01)
 """Threshold grids; 1.01 switches a stage's vision decision off."""
@@ -73,20 +93,9 @@ class NeedsImage:
         y = [int(r.score["vision"] > r.score["text"]) for r in rows]
         if len(set(y)) < 2:
             raise ValueError("two-stage router needs both labels in the training rows")
-        self._model = lgb.LGBMClassifier(
-            n_estimators=400,
-            learning_rate=0.03,
-            num_leaves=15,
-            min_child_samples=30,
-            subsample=0.8,
-            subsample_freq=1,
-            colsample_bytree=0.8,
-            random_state=self.seed,
-            deterministic=True,
-            force_row_wise=True,
-            n_jobs=1,
-            verbose=-1,
-        ).fit(self._design(rows, features, fit=True), y)
+        self._model = lgb.LGBMClassifier(**lgbm_params(self.seed)).fit(
+            self._design(rows, features, fit=True), y
+        )
         return self
 
     def predict(self, rows: Sequence[LabelRow], features: Features) -> dict[str, float]:
