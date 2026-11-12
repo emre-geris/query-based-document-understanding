@@ -517,6 +517,39 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_router_ablation(args: argparse.Namespace) -> int:
+    from qdu.layout import load_layout
+    from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
+    from qdu.router.ablation import format_ablation, run_ablation, with_dataset, write_ablation
+
+    extractors = [EXTRACTORS[e]() for e in ("s1", "s2", "s3", "s4")]
+    train = read_labels(args.labels, splits=["train"])
+    val = read_labels(args.labels, splits=["val"])
+    rows = [*train, *val]
+    layout = load_layout(args.layout)
+    table = build_features(router_inputs(rows, load_ocr(args.ocr), layout), extractors)
+    results = run_ablation(
+        train,
+        val,
+        with_dataset(rows, table.features),
+        table.seconds,
+        {r.question_id: layout[r.doc_id].latency_s for r in rows},
+        {e.name: e.needs_ocr for e in extractors},
+        {e.name: e.needs_layout for e in extractors},
+        seed=args.seed,
+    )
+    print(
+        f"Signal ablation on val ({len(val)} questions; models fitted on train). AUC: 0.5 = "
+        "chance. text_ok: text as good as vision; within: mean AUC inside each dataset; right: "
+        "text answer correct; beats: text or hybrid beats vision. score / C s / λ: learned "
+        "router within the always-vision C budget."
+    )
+    print(format_ablation(results))
+    write_ablation(results, args.out)
+    print(f"\nWrote {args.out}")
+    return 0
+
+
 def cmd_router_pack_ocr(args: argparse.Namespace) -> int:
     from qdu.router import pack_ocr, read_labels
 
@@ -760,6 +793,15 @@ def build_parser() -> argparse.ArgumentParser:
     ts.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     ts.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
     ts.set_defaults(func=cmd_router_two_stage)
+    ab = router_sub.add_parser(
+        "ablation", help="what each signal group adds: AUC and learned-router result on val"
+    )
+    ab.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    ab.add_argument("--seed", type=int, default=0)
+    ab.add_argument("--out", type=Path, default=Path("runs/ablation/ablation_val.csv"))
+    ab.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    ab.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
+    ab.set_defaults(func=cmd_router_ablation)
     pack = router_sub.add_parser(
         "pack-ocr", help="collect the run's OCR of every labelled page into one file"
     )
