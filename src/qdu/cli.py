@@ -373,11 +373,9 @@ def cmd_router_train(args: argparse.Namespace) -> int:
 
 
 def cmd_router_baseline(args: argparse.Namespace) -> int:
-    import csv
-
     from qdu.provenance import file_sha256, run_metadata
     from qdu.router import load_ocr, read_labels
-    from qdu.router.baselines import train_ecodoc, train_question_only
+    from qdu.router.baselines import train_ecodoc, train_question_only, write_grid
     from qdu.router.train import write_choices
 
     train = read_labels(args.labels, splits=["train"])
@@ -415,12 +413,7 @@ def cmd_router_baseline(args: argparse.Namespace) -> int:
     policy = baseline.policy(target)
     choices = out / (f"{args.name}.csv" if args.split == "val" else f"{args.name}-test.csv")
     write_choices(policy, target, choices)
-    with (out / "val_grid.csv").open("w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f, lineterminator="\n")
-        w.writerow([*labels, "score", "cost", "share_text", "share_vision", "share_hybrid"])
-        for g in baseline.grid:
-            shares = [f"{g.shares[p]:.4f}" for p in ("text", "vision", "hybrid")]
-            w.writerow([*g.params, f"{g.score:.6f}", f"{g.cost:.4f}", *shares])
+    write_grid(baseline.grid, labels, out / "val_grid.csv")
     meta = run_metadata(
         router=args.name,
         params=dict(zip(labels, baseline.params, strict=True)),
@@ -433,6 +426,93 @@ def cmd_router_baseline(args: argparse.Namespace) -> int:
     (out / "router.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     chosen = ", ".join(f"{k} = {v}" for k, v in zip(labels, baseline.params, strict=True))
     print(f"\n{chosen}; wrote {choices}")
+    print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
+    return 0
+
+
+def cmd_router_two_stage(args: argparse.Namespace) -> int:
+    from qdu.layout import load_layout
+    from qdu.provenance import file_sha256, run_metadata
+    from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
+    from qdu.router.baselines import write_grid
+    from qdu.router.train import write_choices
+    from qdu.router.two_stage import train_two_stage
+
+    stage1, stage2 = _names(args.stage1), _names(args.stage2)
+    unknown = [e for e in (*stage1, *stage2) if e not in EXTRACTORS]
+    if unknown:
+        print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
+        return 2
+    first_ocr = [e for e in stage1 if EXTRACTORS[e]().needs_ocr]
+    if first_ocr:
+        print(f"stage 1 must not need OCR, but {first_ocr} do", file=sys.stderr)
+        return 2
+    names = list(dict.fromkeys((*stage1, *stage2)))
+    extractors = [EXTRACTORS[e]() for e in names]
+    needs_layout = {e.name: e.needs_layout for e in extractors}
+    train = read_labels(args.labels, splits=["train"])
+    val = read_labels(args.labels, splits=["val"])
+    target = val if args.split == "val" else read_labels(args.labels, splits=["test"])
+    if args.split == "test":
+        print("Note: writing test choices; thresholds are fixed on train/val beforehand.")
+    rows = list({r.question_id: r for r in [*train, *val, *target]}.values())
+    ocr = load_ocr(args.ocr) if any(e.needs_ocr for e in extractors) else None
+    layout = load_layout(args.layout) if any(needs_layout.values()) else None
+    table = build_features(router_inputs(rows, ocr, layout), extractors)
+    layout_s = {r.question_id: layout[r.doc_id].latency_s if layout else 0.0 for r in rows}
+    try:
+        router = train_two_stage(
+            train,
+            val,
+            table.features,
+            table.seconds,
+            layout_s,
+            stage1=stage1,
+            stage2=stage2,
+            needs_layout=needs_layout,
+            seed=args.seed,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    name = args.name
+    out = args.out_dir / name
+    print(f"Router {name}: stage 1 {','.join(stage1)} (no OCR), stage 2 {','.join(stage2)}")
+    print(f"Validation grid (C cost budget = always-vision {router.budget:.3f} s):")
+    print(f"  {'t1':>6}{'t2':>6}{'score':>8}{'C s':>8}   text/vision/hybrid")
+    for g in router.grid:
+        mark = "  <- chosen" if g.params == router.params else ""
+        shares = "/".join(f"{g.shares[p]:.2f}" for p in ("text", "vision", "hybrid"))
+        print(
+            f"  {g.params[0]:>6.2f}{g.params[1]:>6.2f}{g.score * 100:>8.1f}{g.cost:>8.3f}"
+            f"   {shares}{mark}"
+        )
+    if not router.met_budget:
+        print("  No setting stays within the budget: the most accurate one is kept.")
+
+    policy = router.policy(target, table.features, table.seconds, layout_s, name=name)
+    choices = out / (f"{name}.csv" if args.split == "val" else f"{name}-test.csv")
+    write_choices(policy, target, choices)
+    write_grid(router.grid, ("t1", "t2"), out / "val_grid.csv")
+    stage2_share = sum(policy.uses_ocr.values()) / len(target)
+    meta = run_metadata(
+        router=name,
+        stage1=stage1,
+        stage2=stage2,
+        t1=router.params[0],
+        t2=router.params[1],
+        met_budget=router.met_budget,
+        budget_c_s=router.budget,
+        seed=args.seed,
+        labels=str(args.labels),
+        labels_sha256=file_sha256(args.labels),
+    )
+    (out / "router.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    print(
+        f"\nt1 = {router.params[0]}, t2 = {router.params[1]}; {stage2_share:.0%} of "
+        f"{args.split} questions reach stage 2 (pay OCR); wrote {choices}"
+    )
     print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
     return 0
 
@@ -665,6 +745,21 @@ def build_parser() -> argparse.ArgumentParser:
     bl.add_argument("--out-dir", type=Path, default=Path("runs/routers"))
     bl.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     bl.set_defaults(func=cmd_router_baseline)
+    ts = router_sub.add_parser(
+        "two-stage", help="OCR-free stage 1, OCR signals only for uncertain questions"
+    )
+    ts.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    ts.add_argument("--stage1", default="s1,s3", help="OCR-free signals for stage 1")
+    ts.add_argument("--stage2", default="s1,s2,s3,s4", help="signals for stage 2 (after OCR)")
+    ts.add_argument(
+        "--split", choices=("val", "test"), default="val", help="split to write choices for"
+    )
+    ts.add_argument("--seed", type=int, default=0)
+    ts.add_argument("--name", default="two-stage")
+    ts.add_argument("--out-dir", type=Path, default=Path("runs/routers"))
+    ts.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    ts.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
+    ts.set_defaults(func=cmd_router_two_stage)
     pack = router_sub.add_parser(
         "pack-ocr", help="collect the run's OCR of every labelled page into one file"
     )

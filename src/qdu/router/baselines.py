@@ -19,9 +19,11 @@ scenario-C cost stays within always-vision's (`qdu.router.train`). Each declares
 the question-only router never runs OCR to decide; EcoDoc runs it only after rule 1 says text.
 """
 
+import csv
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -82,12 +84,14 @@ def select_point(points: Sequence[GridPoint], budget: float) -> tuple[GridPoint,
     return max(pool, key=lambda p: (round(p.score, 12), -p.cost)), bool(within)
 
 
-def _vision_budget(rows: Sequence[LabelRow], scenario: str = "C") -> float:
+def vision_budget(rows: Sequence[LabelRow], scenario: str = "C") -> float:
+    """Always-vision's mean cost on ``rows``: the budget a router's thresholds must respect."""
     vision = Policy("always-vision", {r.question_id: "vision" for r in rows})
     return sum(vision.cost(r, scenario) for r in rows) / len(rows)
 
 
-def _point(rows: Sequence[LabelRow], policy: Policy, params: tuple[float, ...]) -> GridPoint:
+def grid_point(rows: Sequence[LabelRow], policy: Policy, params: tuple[float, ...]) -> GridPoint:
+    """Score, scenario-C cost and path shares of ``policy`` on ``rows``."""
     n = len(rows)
     score = sum(r.score[policy.choice[r.question_id]] for r in rows) / n
     cost = sum(policy.cost(r, "C") for r in rows) / n
@@ -156,8 +160,8 @@ def train_question_only(
     budget: float | None = None,
 ) -> Baseline:
     router = QuestionOnly(seed).fit(train)
-    grid = [_point(val, router.decide(val, (t,)), (t,)) for t in thresholds]
-    budget = _vision_budget(val) if budget is None else budget
+    grid = [grid_point(val, router.decide(val, (t,)), (t,)) for t in thresholds]
+    budget = vision_budget(val) if budget is None else budget
     best, met = select_point(grid, budget)
     return Baseline(router.name, best.params, grid, budget, met, router.decide)
 
@@ -229,7 +233,24 @@ def train_ecodoc(
     if missing:
         raise ValueError(f"no OCR for {len(missing)} pages, e.g. {missing[:3]}")
     router = EcoDocRules(ocr).fit(train)
-    grid = [_point(val, router.decide(val, (m, t)), (m, t)) for m in margins for t in relevance]
-    budget = _vision_budget(val) if budget is None else budget
+    grid = [grid_point(val, router.decide(val, (m, t)), (m, t)) for m in margins for t in relevance]
+    budget = vision_budget(val) if budget is None else budget
     best, met = select_point(grid, budget)
     return Baseline(router.name, best.params, grid, budget, met, router.decide)
+
+
+def write_grid(points: Sequence[GridPoint], labels: Sequence[str], path: Path) -> None:
+    """A threshold grid (one row per setting) as CSV."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow([*labels, "score", "cost", *(f"share_{p}" for p in PATHS)])
+        for g in points:
+            w.writerow(
+                [
+                    *g.params,
+                    f"{g.score:.6f}",
+                    f"{g.cost:.4f}",
+                    *(f"{g.shares[p]:.4f}" for p in PATHS),
+                ]
+            )
