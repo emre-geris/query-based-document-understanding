@@ -223,22 +223,26 @@ def train_router(
 
 
 def write_choices(policy: Policy, rows: Sequence[LabelRow], path: Path) -> None:
-    """The policy as a choices CSV for ``qdu router evaluate --choices``."""
+    """The policy as a choices CSV for ``qdu router evaluate --choices``; a ``called_before``
+    column is added only for a policy that paid for earlier paths (a cascade)."""
+    cascade = bool(policy.called_before)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow(["question_id", "pipeline", "uses_ocr", "page_s", "question_s"])
+        header = ["question_id", "pipeline", "uses_ocr", "page_s", "question_s"]
+        w.writerow([*header, "called_before"] if cascade else header)
         for r in rows:
             q = r.question_id
-            w.writerow(
-                [
-                    q,
-                    policy.choice[q],
-                    int(policy.uses_ocr.get(q, False)),
-                    f"{policy.page_s.get(q, 0.0):.6f}",
-                    f"{policy.question_s.get(q, 0.0):.6f}",
-                ]
-            )
+            cells = [
+                q,
+                policy.choice[q],
+                int(policy.uses_ocr.get(q, False)),
+                f"{policy.page_s.get(q, 0.0):.6f}",
+                f"{policy.question_s.get(q, 0.0):.6f}",
+            ]
+            if cascade:
+                cells.append(";".join(policy.called_before.get(q, ())))
+            w.writerow(cells)
 
 
 def write_curve(curve: Sequence[CurvePoint], path: Path) -> None:

@@ -550,6 +550,96 @@ def cmd_router_ablation(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_router_learned_cascade(args: argparse.Namespace) -> int:
+    from qdu.layout import load_layout
+    from qdu.provenance import file_sha256, run_metadata
+    from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
+    from qdu.router.baselines import write_grid
+    from qdu.router.learned_cascade import (
+        answer_features,
+        read_answer_inputs,
+        train_learned_cascade,
+    )
+    from qdu.router.train import write_choices
+
+    signals = [] if args.signals == "none" else _names(args.signals)
+    unknown = [e for e in signals if e not in EXTRACTORS]
+    if unknown:
+        print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
+        return 2
+    extractors = [EXTRACTORS[e]() for e in signals]
+    train = read_labels(args.labels, splits=["train"])
+    val = read_labels(args.labels, splits=["val"])
+    target = val if args.split == "val" else read_labels(args.labels, splits=["test"])
+    if args.split == "test":
+        print("Note: writing test choices; the threshold is fixed on train/val beforehand.")
+    rows = list({r.question_id: r for r in [*train, *val, *target]}.values())
+    ocr = load_ocr(args.ocr)
+    needs_layout = any(e.needs_layout for e in extractors)
+    layout = load_layout(args.layout) if needs_layout else None
+    answers, confidence, left_out = read_answer_inputs(args.labelled_run, args.logprob_run)
+    features, ans_seconds = answer_features(rows, answers, confidence, ocr)
+    if extractors:
+        table = build_features(router_inputs(rows, ocr, layout), extractors)
+        for q, f in table.features.items():
+            features[q].update(f)
+        seconds = {q: ans_seconds[q] + sum(table.seconds[q].values()) for q in ans_seconds}
+    else:
+        seconds = ans_seconds
+    layout_s = {r.question_id: layout[r.doc_id].latency_s if layout else 0.0 for r in rows}
+    try:
+        cascade = train_learned_cascade(
+            train,
+            val,
+            features,
+            seconds,
+            layout_s,
+            signals=signals,
+            signals_need_layout=needs_layout,
+            seed=args.seed,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    name = args.name
+    out = args.out_dir / name
+    print(
+        f"Router {name}: text first, escalate to vision; answer features + {signals or 'no'}"
+        f" signals ({left_out} confidences left out: answer differs in the logprob run)"
+    )
+    print(f"Validation grid (C cost budget = always-vision {cascade.budget:.3f} s):")
+    print(f"  {'threshold':>9}{'score':>8}{'C s':>8}   kept text/escalated")
+    for g in cascade.grid:
+        mark = "  <- chosen" if g.params[0] == cascade.threshold else ""
+        print(
+            f"  {g.params[0]:>9.2f}{g.score * 100:>8.1f}{g.cost:>8.3f}"
+            f"   {g.shares['text']:.2f}/{g.shares['vision']:.2f}{mark}"
+        )
+    if not cascade.met_budget:
+        print("  No threshold stays within the budget: the most accurate one is kept.")
+
+    policy = cascade.policy(target, features, seconds, layout_s, name=name)
+    choices = out / (f"{name}.csv" if args.split == "val" else f"{name}-test.csv")
+    write_choices(policy, target, choices)
+    write_grid(cascade.grid, ("threshold",), out / "val_grid.csv")
+    meta = run_metadata(
+        router=name,
+        signals=signals,
+        threshold=cascade.threshold,
+        met_budget=cascade.met_budget,
+        budget_c_s=cascade.budget,
+        confidences_left_out=left_out,
+        seed=args.seed,
+        labels=str(args.labels),
+        labels_sha256=file_sha256(args.labels),
+    )
+    (out / "router.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    print(f"\nthreshold = {cascade.threshold}; wrote {choices}")
+    print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
+    return 0
+
+
 def cmd_router_pack_ocr(args: argparse.Namespace) -> int:
     from qdu.router import pack_ocr, read_labels
 
@@ -802,6 +892,26 @@ def build_parser() -> argparse.ArgumentParser:
     ab.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     ab.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
     ab.set_defaults(func=cmd_router_ablation)
+    lc = router_sub.add_parser(
+        "learned-cascade", help="text first; a classifier on the text answer decides escalation"
+    )
+    lc.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    lc.add_argument(
+        "--signals", default="s1,s2,s3,s4", help="router signals next to the answer, or 'none'"
+    )
+    lc.add_argument(
+        "--split", choices=("val", "test"), default="val", help="split to write choices for"
+    )
+    lc.add_argument("--seed", type=int, default=0)
+    lc.add_argument("--name", default="learned-cascade")
+    lc.add_argument("--out-dir", type=Path, default=Path("runs/routers"))
+    lc.add_argument("--labelled-run", type=Path, default=Path("results/full-qwen3.5-4b"))
+    lc.add_argument(
+        "--logprob-run", type=Path, default=Path("results/full-text-logprobs-qwen3.5-4b")
+    )
+    lc.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    lc.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
+    lc.set_defaults(func=cmd_router_learned_cascade)
     pack = router_sub.add_parser(
         "pack-ocr", help="collect the run's OCR of every labelled page into one file"
     )

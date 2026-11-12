@@ -65,8 +65,9 @@ def baselines(rows: Iterable[LabelRow], paths: Sequence[str] = PATHS) -> list[Po
 
 def read_policy(path: Path, name: str | None = None) -> Policy:
     """A policy from a CSV with ``question_id`` and ``pipeline`` and, optionally, the router's
-    own cost: ``uses_ocr`` (0/1), ``page_s`` and ``question_s`` (seconds)."""
-    choice, uses_ocr, page_s, question_s = {}, {}, {}, {}
+    own cost: ``uses_ocr`` (0/1), ``page_s`` and ``question_s`` (seconds), and for a cascade
+    ``called_before``: the paths it paid for before the kept one, separated by ``;``."""
+    choice, uses_ocr, page_s, question_s, before = {}, {}, {}, {}, {}
     with path.open(newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
             qid = r["question_id"]
@@ -79,7 +80,13 @@ def read_policy(path: Path, name: str | None = None) -> Policy:
                 page_s[qid] = float(r["page_s"])
             if r.get("question_s"):
                 question_s[qid] = float(r["question_s"])
-    return Policy(name or path.stem, choice, uses_ocr, page_s, question_s)
+            if r.get("called_before"):
+                paths = tuple(p for p in r["called_before"].split(";") if p)
+                unknown = [p for p in paths if p not in PATH_USES_OCR]
+                if unknown:
+                    raise ValueError(f"{path}: unknown called_before {unknown} for {qid}")
+                before[qid] = paths
+    return Policy(name or path.stem, choice, uses_ocr, page_s, question_s, before)
 
 
 @dataclass(frozen=True)
