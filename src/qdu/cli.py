@@ -290,6 +290,88 @@ def cmd_router_features(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_router_train(args: argparse.Namespace) -> int:
+    import joblib
+
+    from qdu.layout import load_layout
+    from qdu.provenance import file_sha256, run_metadata
+    from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, route, router_inputs
+    from qdu.router.train import train_router, write_choices, write_curve
+
+    names = _names(args.extractors)
+    unknown = [e for e in names if e not in EXTRACTORS]
+    if unknown:
+        print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
+        return 2
+    extractors = [EXTRACTORS[e]() for e in names]
+    train = read_labels(args.labels, splits=["train"])
+    val = read_labels(args.labels, splits=["val"])
+    target = val if args.split == "val" else read_labels(args.labels, splits=["test"])
+    if args.split == "test":
+        print("Note: writing test choices; λ and the model are fixed on train/val beforehand.")
+    rows = {r.question_id: r for r in [*train, *val, *target]}.values()
+    uses_ocr = any(e.needs_ocr for e in extractors)
+    needs_layout = any(e.needs_layout for e in extractors)
+    ocr = load_ocr(args.ocr) if uses_ocr else None
+    layout = load_layout(args.layout) if needs_layout else None
+    table = build_features(router_inputs(rows, ocr, layout), extractors)
+    router_cost = table.router_cost(layout, {r.question_id: r.doc_id for r in rows})
+    try:
+        trained = train_router(
+            train,
+            val,
+            table.features,
+            router_cost,
+            uses_ocr=uses_ocr,
+            kind=args.model,
+            tfidf=not args.no_tfidf,
+            seed=args.seed,
+            lambdas=[float(x) for x in _names(args.lambdas)],
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    name = args.name or f"{args.model}-{'-'.join(names)}{'' if args.no_tfidf else '-tfidf'}"
+    out = args.out_dir / name
+    print(f"Router {name}: {args.model}, signals {','.join(names)}, tfidf {not args.no_tfidf}")
+    print(f"Validation curve (C cost budget = always-vision {trained.budget:.3f} s):")
+    print(f"  {'lambda':>7}{'score':>8}{'C s':>8}   paths text/vision/hybrid")
+    for c in trained.curve:
+        mark = "  <- chosen" if c.lam == trained.lam else ""
+        shares = "/".join(f"{c.shares[p]:.2f}" for p in ("text", "vision", "hybrid"))
+        print(f"  {c.lam:>7.3f}{c.score * 100:>8.1f}{c.cost:>8.3f}   {shares}{mark}")
+    if not trained.met_budget:
+        print("  No λ stays within the budget: the most accurate point is kept.")
+
+    target_ids = {r.question_id for r in target}
+    predicted = trained.model.predict(target, table.features)
+    cost_args = {k: {q: v for q, v in d.items() if q in target_ids} for k, d in router_cost.items()}
+    policy = route(predicted, trained.cost, trained.lam, name=name, **cost_args)
+    # the file stem is the method name in `qdu router evaluate`
+    choices = out / (f"{name}.csv" if args.split == "val" else f"{name}-test.csv")
+    write_choices(policy, target, choices)
+    write_curve(trained.curve, out / "val_curve.csv")
+    joblib.dump(trained.model, out / "model.joblib")
+    meta = run_metadata(
+        router=name,
+        model=args.model,
+        extractors=names,
+        tfidf=not args.no_tfidf,
+        seed=args.seed,
+        lam=trained.lam,
+        met_budget=trained.met_budget,
+        budget_c_s=trained.budget,
+        decision_cost=trained.cost,
+        labels=str(args.labels),
+        labels_sha256=file_sha256(args.labels),
+    )
+    (out / "router.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    print(f"\nλ = {trained.lam}; wrote {choices}, model and metadata in {out}")
+    print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
+    return 0
+
+
 def cmd_router_pack_ocr(args: argparse.Namespace) -> int:
     from qdu.router import pack_ocr, read_labels
 
@@ -489,6 +571,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     feat.add_argument("--out", type=Path, required=True)
     feat.set_defaults(func=cmd_router_features)
+    tr = router_sub.add_parser(
+        "train", help="fit per-path quality models on train, choose λ on val, write choices"
+    )
+    tr.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    tr.add_argument("--extractors", default="s1,s2,s3,s4", help="comma-separated signal names")
+    tr.add_argument("--model", choices=("ridge", "lgbm"), default="lgbm")
+    tr.add_argument("--no-tfidf", action="store_true", help="leave out the question's TF-IDF")
+    tr.add_argument("--lambdas", default="0,0.01,0.02,0.05,0.1,0.15,0.2,0.3,0.5")
+    tr.add_argument(
+        "--split", choices=("val", "test"), default="val", help="split to write choices for"
+    )
+    tr.add_argument("--seed", type=int, default=0)
+    tr.add_argument("--name", help="router name (default: model, signals, tfidf)")
+    tr.add_argument("--out-dir", type=Path, default=Path("runs/routers"))
+    tr.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    tr.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
+    tr.set_defaults(func=cmd_router_train)
     pack = router_sub.add_parser(
         "pack-ocr", help="collect the run's OCR of every labelled page into one file"
     )
