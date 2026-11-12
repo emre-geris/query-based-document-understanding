@@ -372,6 +372,71 @@ def cmd_router_train(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_router_baseline(args: argparse.Namespace) -> int:
+    import csv
+
+    from qdu.provenance import file_sha256, run_metadata
+    from qdu.router import load_ocr, read_labels
+    from qdu.router.baselines import train_ecodoc, train_question_only
+    from qdu.router.train import write_choices
+
+    train = read_labels(args.labels, splits=["train"])
+    val = read_labels(args.labels, splits=["val"])
+    target = val if args.split == "val" else read_labels(args.labels, splits=["test"])
+    if args.split == "test":
+        print("Note: writing test choices; thresholds are fixed on train/val beforehand.")
+    try:
+        if args.name == "question-only":
+            baseline = train_question_only(train, val, seed=args.seed)
+            labels = ("threshold",)
+        else:
+            ocr = load_ocr(args.ocr)
+            missing = sorted({r.doc_id for r in target} - set(ocr))
+            if missing:
+                raise ValueError(f"no OCR for {len(missing)} pages, e.g. {missing[:3]}")
+            baseline = train_ecodoc(train, val, ocr)
+            labels = ("margin", "min_relevance")
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    out = args.out_dir / args.name
+    print(f"Baseline {args.name}: thresholds chosen on val")
+    print(f"Validation grid (C cost budget = always-vision {baseline.budget:.3f} s):")
+    print(f"  {'  '.join(f'{x:>13}' for x in labels)}{'score':>8}{'C s':>8}   text/vision/hybrid")
+    for g in baseline.grid:
+        mark = "  <- chosen" if g.params == baseline.params else ""
+        shares = "/".join(f"{g.shares[p]:.2f}" for p in ("text", "vision", "hybrid"))
+        params = "  ".join(f"{v:>13.2f}" for v in g.params)
+        print(f"  {params}{g.score * 100:>8.1f}{g.cost:>8.3f}   {shares}{mark}")
+    if not baseline.met_budget:
+        print("  No setting stays within the budget: the most accurate one is kept.")
+
+    policy = baseline.policy(target)
+    choices = out / (f"{args.name}.csv" if args.split == "val" else f"{args.name}-test.csv")
+    write_choices(policy, target, choices)
+    with (out / "val_grid.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow([*labels, "score", "cost", "share_text", "share_vision", "share_hybrid"])
+        for g in baseline.grid:
+            shares = [f"{g.shares[p]:.4f}" for p in ("text", "vision", "hybrid")]
+            w.writerow([*g.params, f"{g.score:.6f}", f"{g.cost:.4f}", *shares])
+    meta = run_metadata(
+        router=args.name,
+        params=dict(zip(labels, baseline.params, strict=True)),
+        met_budget=baseline.met_budget,
+        budget_c_s=baseline.budget,
+        seed=args.seed,
+        labels=str(args.labels),
+        labels_sha256=file_sha256(args.labels),
+    )
+    (out / "router.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    chosen = ", ".join(f"{k} = {v}" for k, v in zip(labels, baseline.params, strict=True))
+    print(f"\n{chosen}; wrote {choices}")
+    print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
+    return 0
+
+
 def cmd_router_pack_ocr(args: argparse.Namespace) -> int:
     from qdu.router import pack_ocr, read_labels
 
@@ -588,6 +653,18 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     tr.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
     tr.set_defaults(func=cmd_router_train)
+    bl = router_sub.add_parser(
+        "baseline", help="literature baselines: question-only TF-IDF + LR, EcoDoc-style rules"
+    )
+    bl.add_argument("name", choices=("question-only", "ecodoc"))
+    bl.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    bl.add_argument(
+        "--split", choices=("val", "test"), default="val", help="split to write choices for"
+    )
+    bl.add_argument("--seed", type=int, default=0)
+    bl.add_argument("--out-dir", type=Path, default=Path("runs/routers"))
+    bl.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    bl.set_defaults(func=cmd_router_baseline)
     pack = router_sub.add_parser(
         "pack-ocr", help="collect the run's OCR of every labelled page into one file"
     )
