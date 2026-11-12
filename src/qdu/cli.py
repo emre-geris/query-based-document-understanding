@@ -520,7 +520,14 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
 def cmd_router_ablation(args: argparse.Namespace) -> int:
     from qdu.layout import load_layout
     from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
-    from qdu.router.ablation import format_ablation, run_ablation, with_dataset, write_ablation
+    from qdu.router.ablation import (
+        auc_comparisons,
+        format_ablation,
+        format_comparisons,
+        run_ablation,
+        with_dataset,
+        write_ablation,
+    )
 
     extractors = [EXTRACTORS[e]() for e in ("s1", "s2", "s3", "s4")]
     train = read_labels(args.labels, splits=["train"])
@@ -546,7 +553,19 @@ def cmd_router_ablation(args: argparse.Namespace) -> int:
     )
     print(format_ablation(results))
     write_ablation(results, args.out)
-    print(f"\nWrote {args.out}")
+    comparisons = auc_comparisons(results, val, resamples=args.resamples, seed=args.seed)
+    print("\ntext_ok AUC differences, paired bootstrap over documents:")
+    print(format_comparisons(comparisons))
+    ci_path = args.out.with_name(args.out.stem + "_ci.csv")
+    with ci_path.open("w", newline="", encoding="utf-8") as f:
+        import csv
+
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["comparison", "method", "baseline", "auc_diff", "low", "high"])
+        for c in comparisons:
+            w.writerow([c.label, c.method, c.baseline, f"{c.estimate:.4f}", f"{c.low:.4f}",
+                        f"{c.high:.4f}"])  # fmt: skip
+    print(f"\nWrote {args.out} and {ci_path}")
     return 0
 
 
@@ -888,6 +907,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ab.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
     ab.add_argument("--seed", type=int, default=0)
+    ab.add_argument("--resamples", type=int, default=1000, help="bootstrap resamples for the CIs")
     ab.add_argument("--out", type=Path, default=Path("runs/ablation/ablation_val.csv"))
     ab.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     ab.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
