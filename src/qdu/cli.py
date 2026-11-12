@@ -659,6 +659,56 @@ def cmd_router_learned_cascade(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_router_variants(args: argparse.Namespace) -> int:
+    import csv
+
+    from qdu.layout import load_layout
+    from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
+    from qdu.router.variants import format_variants, run_variants
+
+    names = ("s1", "s2", "s3", "s4")
+    extractors = [EXTRACTORS[e]() for e in names]
+    train = read_labels(args.labels, splits=["train"])
+    val = read_labels(args.labels, splits=["val"])
+    rows = [*train, *val]
+    layout = load_layout(args.layout)
+    table = build_features(router_inputs(rows, load_ocr(args.ocr), layout), extractors)
+    variants = _names(args.variants)
+    if "tuned" in variants:
+        print("Tuning by grouped cross-validation on train: this takes a few minutes.")
+    try:
+        results = run_variants(
+            train,
+            val,
+            table.features,
+            table.seconds,
+            {r.question_id: layout[r.doc_id].latency_s for r in rows},
+            needs_layout={e.name: e.needs_layout for e in extractors},
+            variants=variants,
+            seed=args.seed,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        "Two-stage router, training variants on val (fitted on train; thresholds as quantiles "
+        "of each stage's outputs, chosen within the always-vision C budget). AUC text_ok: "
+        "stage 2 separating text-as-good-as-vision; stage 1: share decided without OCR."
+    )
+    print(format_variants(results))
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with args.out.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["variant", "auc_text_ok", "score", "cost_c_s", "met_budget", "stage1_share",
+                    "params"])  # fmt: skip
+        for r in results:
+            w.writerow([r.variant, f"{r.auc_text_ok:.4f}", f"{r.score:.6f}", f"{r.cost:.4f}",
+                        int(r.met_budget), f"{r.stage1_share:.4f}",
+                        json.dumps(r.params, sort_keys=True)])  # fmt: skip
+    print(f"\nWrote {args.out}")
+    return 0
+
+
 def cmd_router_pack_ocr(args: argparse.Namespace) -> int:
     from qdu.router import pack_ocr, read_labels
 
@@ -932,6 +982,16 @@ def build_parser() -> argparse.ArgumentParser:
     lc.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     lc.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
     lc.set_defaults(func=cmd_router_learned_cascade)
+    va = router_sub.add_parser(
+        "variants", help="two-stage router trained four ways: default, weighted, regress, tuned"
+    )
+    va.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    va.add_argument("--variants", default="default,weighted,regress,tuned")
+    va.add_argument("--seed", type=int, default=0)
+    va.add_argument("--out", type=Path, default=Path("runs/variants/variants_val.csv"))
+    va.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    va.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
+    va.set_defaults(func=cmd_router_variants)
     pack = router_sub.add_parser(
         "pack-ocr", help="collect the run's OCR of every labelled page into one file"
     )
