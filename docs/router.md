@@ -1,5 +1,7 @@
 # Router work: hand-off guide
 
+> Final phase (from 14 Nov 2026): see `docs/phase7_handoff.md` for what to build next and why.
+
 Everything needed to build and evaluate the router **on a laptop, without a GPU**. The GPU
 work is finished: every question of the four datasets was answered by all three paths
 (`results/full-qwen3.5-4b/`, 10–11 Nov 2026), and the label table, the run's OCR, page
