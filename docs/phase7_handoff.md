@@ -93,7 +93,9 @@ OCR-free signals and buys OCR only when its expected value exceeds its cost.
 > from the plan: S5 is also precomputed into `question_embeddings.jsonl.gz` (with the CLIP
 > question-page cosine `qsim` and its time), so routers train without sentence-transformers;
 > the dependency is not added yet (`uv add --optional embed sentence-transformers` needs the
-> network). Next: run `qdu router embed`, commit the two files, evaluate.
+> network). Embeddings committed (laptop CPU timing). Val within the always-vision budget:
+> + S5 85.1 vs 84.5 without (+0.6 [−0.3, +1.6], not significant); S6 does not help at CPU
+> cost in stage 1 (84.0) or stage 2 (84.8). Next: CLIP timing on the L4 (section 2.4).
 
 - **S5 – question embedding**: `sentence-transformers/all-MiniLM-L6-v2`, 384-d, normalised;
   ~1.2 ms per question on the laptop CPU (batched).
