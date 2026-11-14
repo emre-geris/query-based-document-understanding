@@ -164,6 +164,27 @@ class TwoStageRouter:
         p3 = self.hybrid.predict(rows, features) if self.hybrid is not None else {}
         return self.stage1.predict(rows, features), self.stage2.predict(rows, features), p3
 
+    def choose(
+        self,
+        p1: float,
+        p2: float | None = None,
+        p3: float | None = None,
+        params: tuple[float, ...] | None = None,
+    ) -> tuple[str, int]:
+        """The path for one question and the stage that decided it, from its head
+        probabilities. ``p2`` (and ``p3``) are needed only when stage 1 does not decide; the
+        live router (`qdu.router.live`) runs OCR only then. The single place the rule lives,
+        so evaluation and the demo choose identically."""
+        t1, t2, *rest = params or self.params
+        t3 = rest[0] if rest else OFF
+        if p1 >= t1:  # stage 1: the image is needed, decided without OCR
+            return "vision", 1
+        if p2 is None:
+            raise ValueError("stage 1 did not decide: the stage-2 probability is needed")
+        if t3 < OFF and p3 is not None and p3 >= t3:  # OCR already paid: only model time
+            return "hybrid", 2
+        return ("vision" if p2 >= t2 else "text"), 2
+
     def policy(
         self,
         rows: Sequence[LabelRow],
@@ -183,8 +204,6 @@ class TwoStageRouter:
         skips the models when many settings are scored on the same rows. ``page_seconds``
         (`FeatureTable.page_seconds`) is page-level signal time per extractor, e.g. the CLIP
         page embedding of S6; a stage pays it for the extractors it uses."""
-        t1, t2, *rest = params or self.params
-        t3 = rest[0] if rest else OFF
         p1, p2, p3 = probabilities or self.probabilities(rows, features)
         choice, uses_ocr, page_s, question_s = {}, {}, {}, {}
         both = (*self.stage1_extractors, *self.stage2_extractors)
@@ -193,8 +212,9 @@ class TwoStageRouter:
             spent = seconds[q]
             on_page = (page_seconds or {}).get(q, {})
             question_s[q] = sum(spent[e] for e in self.stage1_extractors)
-            if p1[q] >= t1:  # stage 1: the image is needed, decided without OCR
-                choice[q], uses_ocr[q] = "vision", False
+            choice[q], stage = self.choose(p1[q], p2[q], p3.get(q), params)
+            if stage == 1:  # decided without OCR
+                uses_ocr[q] = False
                 page_s[q] = (layout_s[q] if self.stage1_needs_layout else 0.0) + sum(
                     t for e, t in on_page.items() if e in self.stage1_extractors
                 )
@@ -206,12 +226,6 @@ class TwoStageRouter:
             question_s[q] += sum(
                 spent[e] for e in self.stage2_extractors if e not in self.stage1_extractors
             )
-            if t3 < OFF and q in p3 and p3[q] >= t3:  # OCR already paid: only model time
-                choice[q] = "hybrid"
-            elif p2[q] >= t2:
-                choice[q] = "vision"
-            else:
-                choice[q] = "text"
         return Policy(name, choice, uses_ocr, page_s, question_s)
 
 

@@ -169,6 +169,13 @@ for result in evaluate(val, [policy]):
   (`save_two_stage` / `load_two_stage`, heads, TF-IDF vocabularies and thresholds plus the
   run metadata), so the demo routes new questions without retraining; `runs/` is not committed,
   so retrain it with the same command on a new machine.
+- **Live routing** (`qdu.router.live.LiveRouter`, for the demo): routes one new question on a
+  new page with a saved router, computing only the signals each stage needs: layout and the
+  OCR-free signals first, OCR only if stage 1 does not decide. It returns a `LiveDecision`
+  with the path, the stage, each head's probability and the time of every step, and keeps
+  layout and OCR per page so later questions on the page reuse them. S5/S6 are embedded on
+  the spot (`live_extractors`). The path rule is `TwoStageRouter.choose`, shared with the
+  evaluation, so the demo decides exactly as the evaluated router does.
 - **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
   (optional `embed` extra, page images) into two gzips next to the run; the extractors only
   read them. Their measured time is charged through `cost(item) -> (question_s, page_s)`:
