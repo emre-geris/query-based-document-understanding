@@ -854,9 +854,15 @@ def cmd_layout_detect(args: argparse.Namespace) -> int:
 
 
 def build_demo_service(args: argparse.Namespace):
-    """The demo's router, OCR, layout and model from command-line options (``qdu demo``)."""
-    from qdu.demo import DemoService, SharedOcr, demo_fake_model
+    """The demo's router, OCR, layout and model from command-line options (``qdu demo``).
+
+    Example pages use the run's stored OCR and layout; other pages get the live OCR engine and
+    layout detector, built only when first needed. ``--model replay`` answers example questions
+    with the labelled run's recorded outputs and other questions with the fake model."""
+    from qdu.demo import DemoService, SharedOcr, StoredLayout, StoredOcr, demo_fake_model
+    from qdu.layout import load_layout
     from qdu.models import create_model
+    from qdu.router import load_ocr
     from qdu.router.live import LiveRouter, live_extractors
     from qdu.router.two_stage import load_two_stage
 
@@ -869,21 +875,35 @@ def build_demo_service(args: argparse.Namespace):
         question_encoder = load_encoder(QUESTION_MODEL) if "s5" in names else None
         clip_encoder = load_encoder(PAGE_MODEL) if "s6" in names else None
     extractors = live_extractors(question_encoder, clip_encoder)
-    layout = None
-    if any(extractors[n].needs_layout for n in names):
+
+    def live_layout():
         from qdu.layout import PaddleLayout
 
-        layout = PaddleLayout(args.layout_model)
-    ocr = SharedOcr(_ocr(args.ocr, 3, None))
-    model = demo_fake_model() if args.model == "fake" else create_model(args.model)
+        return PaddleLayout(args.layout_model)
+
+    stored = args.run / "ocr.jsonl.gz", args.run / "layout.jsonl.gz"
+    ocr = SharedOcr(
+        StoredOcr(
+            load_ocr(stored[0]) if stored[0].exists() else {}, lambda: _ocr(args.ocr, 3, None)
+        )
+    )
+    layout = StoredLayout(load_layout(stored[1]) if stored[1].exists() else {}, live_layout)
+    model = demo_fake_model() if args.model in ("fake", "replay") else create_model(args.model)
     return DemoService(LiveRouter(router, extractors, ocr, layout), model, ocr), meta
 
 
 def cmd_demo_ask(args: argparse.Namespace) -> int:
     from PIL import Image
 
-    from qdu.demo import describe
+    from qdu.data import ImageStore
+    from qdu.demo import describe, load_examples, load_recorded
 
+    if bool(args.image) == bool(args.example):
+        print("give either --image with --question, or --example", file=sys.stderr)
+        return 2
+    if args.image and not args.question:
+        print("--image needs at least one --question", file=sys.stderr)
+        return 2
     try:
         service, meta = build_demo_service(args)
     except (ImportError, RuntimeError, ValueError, FileNotFoundError) as exc:
@@ -891,16 +911,52 @@ def cmd_demo_ask(args: argparse.Namespace) -> int:
         return 2
     print(
         f"Router {meta.get('router', args.router)} ({'/'.join(meta.get('paths', []))}), "
-        f"model {args.model}, OCR {args.ocr}"
+        f"model {args.model}, OCR {args.ocr} (stored for example pages)"
     )
-    if args.model == "fake":
-        print("Note: the fake model's answers and times mean nothing; never report them.")
+    if args.model in ("fake", "replay"):
+        print("Note: fake-model answers and times mean nothing; never report them.")
+    if args.example:
+        examples = {e.question_id: e for e in load_examples(args.run, args.manifest)}
+        unknown = [q for q in args.example if q not in examples]
+        if unknown:
+            print(f"not val questions of the label table: {unknown}", file=sys.stderr)
+            return 2
+        recorded = load_recorded(args.example, args.run) if args.model == "replay" else {}
+        store = ImageStore()
+        for qid in args.example:
+            e = examples[qid]
+            page = store.get(e.record).convert("RGB")
+            answer = service.ask(
+                e.record.question, page, e.doc_id, args.mode, args.compare,
+                answers=e.record.answers, dataset=e.dataset, recorded=recorded.get(qid),
+            )  # fmt: skip
+            print(f"\n[{qid}, page {e.doc_id}, needs: {e.kind}]")
+            print(describe(answer))
+        return 0
     with Image.open(args.image) as image:
         page = image.convert("RGB")
     for question in args.question:
         answer = service.ask(question, page, args.image.stem, args.mode, args.compare)
         print()
         print(describe(answer))
+    return 0
+
+
+def cmd_demo_examples(args: argparse.Namespace) -> int:
+    from qdu.demo import load_examples, showcase
+
+    pages = showcase(load_examples(args.run, args.manifest), per_dataset=args.per_dataset)
+    print(f"{len(pages)} val pages whose questions need text / vision / hybrid:")
+    for page in pages:
+        print(f"\n{page[0].doc_id}  ({page[0].dataset})")
+        for e in page:
+            s = e.label.score
+            print(
+                f"  {e.kind:<12} {e.question_id:<24} {e.record.question}\n"
+                f"  {'':<12} gold: {' | '.join(e.record.answers)}   "
+                f"score text {s['text']:.2f} vision {s['vision']:.2f} hybrid {s['hybrid']:.2f}"
+            )
+    print("\nTry one: uv run qdu demo ask --compare --example <question id>")
     return 0
 
 
@@ -924,8 +980,13 @@ def _add_demo_options(parser: argparse.ArgumentParser) -> None:
         help="folder of a router saved by qdu router two-stage",
     )
     parser.add_argument(
-        "--model", default="fake", help="fake, or openai:<model> for the vLLM server"
+        "--model",
+        default="replay",
+        help="replay (example pages: the labelled run's answers; others: fake), fake, or "
+        "openai:<model> for the vLLM server",
     )
+    parser.add_argument("--run", type=Path, default=Path("results/full-qwen3.5-4b"))
+    parser.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
     parser.add_argument(
         "--ocr", choices=OCR_SPECS, default="rapid-mobile", help="OCR engine (CPU by default)"
     )
@@ -981,12 +1042,18 @@ def build_parser() -> argparse.ArgumentParser:
     ask = demo_sub.add_parser(
         "ask", help="route and answer questions about one page image, printing every cost"
     )
-    ask.add_argument("--image", type=Path, required=True)
+    ask.add_argument("--image", type=Path, help="a page image of your own")
+    ask.add_argument("--question", action="append", help="repeat for several questions")
     ask.add_argument(
-        "--question", action="append", required=True, help="repeat for several questions"
+        "--example", action="append", help="a val question id instead (repeatable); see examples"
     )
     _add_demo_options(ask)
     ask.set_defaults(func=cmd_demo_ask)
+    ex = demo_sub.add_parser("examples", help="val pages whose questions need different paths")
+    ex.add_argument("--per-dataset", type=int, default=2)
+    ex.add_argument("--run", type=Path, default=Path("results/full-qwen3.5-4b"))
+    ex.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
+    ex.set_defaults(func=cmd_demo_examples)
 
     layout = sub.add_parser("layout", help="layout regions per page (PP-DocLayout)")
     layout_sub = layout.add_subparsers(dest="layout_command", required=True)

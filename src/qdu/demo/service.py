@@ -11,11 +11,17 @@ Costs follow the evaluation's scenarios (`qdu.router.evaluate.Policy.cost`):
 OCR runs at most once per page (`SharedOcr`): the router and the text/hybrid paths read the
 same result, as in the labelled run, so its time is counted once. With ``compare=True`` all
 three paths answer (for showing what routing saves); the chosen path is still the router's.
+
+With gold ``answers`` (an example page, `qdu.demo.examples`) every answer is scored by the
+dataset's primary metric. With ``recorded`` outputs (the labelled run's answers for an example)
+a path takes the recorded answer, model time and tokens instead of calling the model.
 """
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from qdu.evaluation.primary import primary_metric, primary_score
 from qdu.models.base import LanguageModel
 from qdu.ocr.base import OcrEngine, OcrResult
 from qdu.pipelines import PipelineInput, PipelineOutput, build_pipeline
@@ -61,6 +67,10 @@ class PathRun:
     ocr_s: float
     tokens_in: int
     tokens_out: int
+    recorded: bool = False
+    """True when the answer comes from the labelled run, not a live model call."""
+    score: float | None = None
+    """Primary-metric score against the gold answers, when they are known."""
 
     @property
     def answer(self) -> str:
@@ -91,6 +101,14 @@ class DemoAnswer:
     page_signal_s: float = 0.0
     router_s: float = 0.0
     """The router's own per-question time: signals and decision (0 when forced)."""
+    gold: tuple[str, ...] = ()
+    """Gold answers (example pages only)."""
+    metric: str | None = None
+    """The dataset's primary metric used for ``score`` (anls, relaxed_accuracy or f1)."""
+
+    @property
+    def score(self) -> float | None:
+        return self.run.score
 
     @property
     def model_s(self) -> float:
@@ -112,8 +130,16 @@ class DemoAnswer:
         return self.run.tokens_in, self.run.tokens_out
 
 
-def _run(pipeline, path: str, question: str, image: "Image", page_id: str) -> PathRun:
-    out = pipeline.run(PipelineInput(question, image, page_id))
+def _run(
+    pipeline,
+    path: str,
+    question: str,
+    image: "Image",
+    page_id: str,
+    recorded: PipelineOutput | None = None,
+    score=None,
+) -> PathRun:
+    out = recorded or pipeline.run(PipelineInput(question, image, page_id))
     return PathRun(
         path,
         out,
@@ -121,6 +147,8 @@ def _run(pipeline, path: str, question: str, image: "Image", page_id: str) -> Pa
         (out.ocr_latency_s or 0.0) if USES_OCR[path] else 0.0,
         out.input_tokens or 0,
         out.output_tokens or 0,
+        recorded=recorded is not None,
+        score=score(out.answer) if score else None,
     )
 
 
@@ -144,15 +172,26 @@ class DemoService:
         page_id: str,
         mode: str = "auto",
         compare: bool = False,
+        *,
+        answers: Sequence[str] = (),
+        dataset: str | None = None,
+        recorded: Mapping[str, PipelineOutput] | None = None,
     ) -> DemoAnswer:
+        """``answers`` and ``dataset`` score the answers; ``recorded`` (path -> the labelled
+        run's output) replaces the model call for the paths it has."""
         if mode not in MODES:
             raise ValueError(f"unknown mode {mode!r}; choose from {', '.join(MODES)}")
         n = self._asked[page_id] = self._asked.get(page_id, 0) + 1
         decision = self.router.decide(question, image, page_id) if mode == "auto" else None
         path = decision.path if decision else mode
+        metric = primary_metric(dataset or "") if answers else None
+        score = (lambda a: primary_score(dataset or "", a, answers)) if answers else None
+        to_run = PATHS if compare else (path,)
+        if recorded and any(USES_OCR[p] for p in to_run):
+            self.ocr.extract(image, page_id)  # recorded paths skip the pipeline, not the page
         runs = {
-            p: _run(self.pipelines[p], p, question, image, page_id)
-            for p in (PATHS if compare else (path,))
+            p: _run(self.pipelines[p], p, question, image, page_id, (recorded or {}).get(p), score)
+            for p in to_run
         }
         needs_ocr = USES_OCR[path] or (decision is not None and decision.stage == 2)
         page_ocr = self.ocr.peek(page_id)
@@ -169,6 +208,8 @@ class DemoService:
             layout_s=decision.layout_s if decision else 0.0,
             page_signal_s=decision.page_signal_s if decision else 0.0,
             router_s=(decision.signal_s + decision.decide_s) if decision else 0.0,
+            gold=tuple(answers),
+            metric=metric,
         )
 
     def forget(self, page_id: str) -> None:
@@ -213,7 +254,10 @@ def describe(answer: DemoAnswer) -> str:
                 lines.append(f"  hybrid head: p(hybrid > vision) = {d.p_hybrid:.4f}, t3 = {t3:.4f}")
         if d.reused:
             lines.append(f"  reused from an earlier question on this page: {', '.join(d.reused)}")
-    lines.append(f"Answer: {answer.run.answer}")
+    source = " (recorded in the labelled run)" if answer.run.recorded else ""
+    lines.append(f"Answer: {answer.run.answer}{source}")
+    if answer.gold:
+        lines.append(f"Gold: {' | '.join(answer.gold)}; {answer.metric} = {answer.score:.2f}")
     lines.append(
         f"Time (scenario C): {answer.total_c_s:.3f} s = OCR {answer.ocr_s:.3f} + layout "
         f"{answer.layout_s:.3f} + page signals {answer.page_signal_s:.3f} + router "
@@ -226,8 +270,9 @@ def describe(answer: DemoAnswer) -> str:
     lines.append(f"Tokens (scenario A): {answer.tokens[0]} in, {answer.tokens[1]} out")
     for p, run in answer.compare.items():
         mark = "  <- shown" if p == answer.path else ""
+        scored = f", {answer.metric} {run.score:.2f}" if run.score is not None else ""
         lines.append(
-            f"  always-{p}: {run.answer!r}, {run.cost_c_s:.3f} s, "
+            f"  always-{p}: {run.answer!r}{scored}, {run.cost_c_s:.3f} s, "
             f"{run.tokens_in + run.tokens_out} tokens{mark}"
         )
     return "\n".join(lines)

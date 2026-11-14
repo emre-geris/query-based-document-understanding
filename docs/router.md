@@ -183,6 +183,12 @@ for result in evaluate(val, [policy]):
   text/hybrid paths. Try it without a GPU (fake model; needs the `embed`, `paddle` and `rapid`
   extras for S5, layout and CPU OCR):
   `uv run qdu demo ask --image page.png --question "..." --compare`.
+- **Demo examples** (`qdu.demo.examples`): val pages only (test stays untouched). `qdu demo
+  examples` lists pages whose questions need text, vision and only-hybrid respectively;
+  `qdu demo ask --example <id> --compare` routes one with the run's stored OCR and layout (so
+  the choice equals the evaluation's) and, with the default `--model replay`, shows the
+  labelled run's recorded answers, times and tokens, scored against the gold answers. No GPU
+  and no OCR or layout install is needed for examples.
 - **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
   (optional `embed` extra, page images) into two gzips next to the run; the extractors only
   read them. Their measured time is charged through `cost(item) -> (question_s, page_s)`:
