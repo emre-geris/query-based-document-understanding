@@ -493,6 +493,7 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
             paths=paths,
             seed=args.seed,
             budget=budget,
+            page_seconds=table.page_seconds,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -526,7 +527,9 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     if not router.met_budget:
         print("  No setting stays within the budget: the most accurate one is kept.")
 
-    policy = router.policy(target, table.features, table.seconds, layout_s, name=name)
+    policy = router.policy(
+        target, table.features, table.seconds, layout_s, name=name, page_seconds=table.page_seconds
+    )
     choices = out / (f"{name}.csv" if args.split == "val" else f"{name}-test.csv")
     write_choices(policy, target, choices)
     write_grid(router.grid, labels, out / "val_grid.csv")
@@ -555,6 +558,63 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     )
     print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
     return 0
+
+
+def cmd_router_embed(args: argparse.Namespace) -> int:
+    import time
+
+    from qdu.data import ImageStore, read_manifest
+    from qdu.router.embed import (
+        PAGE_MODEL,
+        QUESTION_MODEL,
+        compress_pages,
+        compress_questions,
+        device_hardware,
+        embed_pages,
+        embed_questions,
+        load_encoder,
+        load_page_embeddings,
+    )
+
+    try:
+        clip = load_encoder(PAGE_MODEL, args.device)
+        minilm = load_encoder(QUESTION_MODEL, args.device)
+    except ImportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    records = read_manifest(args.manifest)
+    pages = len({r.doc_id for r in records})
+    hardware = device_hardware(args.device)
+    work_pages = args.work_dir / "clip_pages.jsonl"
+    work_questions = args.work_dir / "question_embeddings.jsonl"
+    print(f"S6 {PAGE_MODEL} on {hardware}: {pages} pages -> {work_pages}")
+    start, done = time.perf_counter(), 0
+
+    def on_page(page) -> None:
+        nonlocal done
+        done += 1
+        if done % 200 == 0:
+            elapsed = time.perf_counter() - start
+            print(
+                f"  {done:>5} pages, last {page.latency_s * 1000:.0f} ms  [{elapsed / 60:.1f} min]"
+            )
+
+    n = embed_pages(
+        records,
+        ImageStore().get,
+        clip,
+        work_pages,
+        model=PAGE_MODEL,
+        hardware=hardware,
+        on_page=on_page,
+    )
+    total_pages = compress_pages(work_pages, args.pages_out)
+    print(f"{n} pages embedded now; {total_pages} pages -> {args.pages_out}")
+    print(f"S5 {QUESTION_MODEL} + CLIP text: {len(records)} questions -> {work_questions}")
+    m = embed_questions(records, load_page_embeddings(work_pages), minilm, clip, work_questions)
+    total_questions = compress_questions(work_questions, args.questions_out)
+    print(f"{m} questions embedded now; {total_questions} questions -> {args.questions_out}")
+    return 0 if (total_pages, total_questions) == (pages, len(records)) else 1
 
 
 def cmd_router_ablation(args: argparse.Namespace) -> int:
@@ -625,6 +685,11 @@ def cmd_router_learned_cascade(args: argparse.Namespace) -> int:
     unknown = [e for e in signals if e not in EXTRACTORS]
     if unknown:
         print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
+        return 2
+    if "s6" in signals:  # its page-level CLIP time is not charged by the cascade's cost
+        print(
+            "learned-cascade does not support s6 (page-level cost); use two-stage", file=sys.stderr
+        )
         return 2
     extractors = [EXTRACTORS[e]() for e in signals]
     train = read_labels(args.labels, splits=["train"])
@@ -1004,6 +1069,23 @@ def build_parser() -> argparse.ArgumentParser:
     ts.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     ts.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
     ts.set_defaults(func=cmd_router_two_stage)
+    em = router_sub.add_parser(
+        "embed",
+        help="S5/S6 signals: CLIP page and MiniLM question embeddings (resumable; needs the "
+        "'embed' extra and the page images)",
+    )
+    em.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
+    em.add_argument("--device", default="cpu", help="cpu, or cuda to time on the GPU")
+    em.add_argument("--work-dir", type=Path, default=Path("runs/embed"))
+    em.add_argument(
+        "--pages-out", type=Path, default=Path("results/full-qwen3.5-4b/clip_pages.jsonl.gz")
+    )
+    em.add_argument(
+        "--questions-out",
+        type=Path,
+        default=Path("results/full-qwen3.5-4b/question_embeddings.jsonl.gz"),
+    )
+    em.set_defaults(func=cmd_router_embed)
     ab = router_sub.add_parser(
         "ablation", help="what each signal group adds: AUC and learned-router result on val"
     )

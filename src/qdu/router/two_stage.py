@@ -172,27 +172,36 @@ class TwoStageRouter:
         params: tuple[float, ...] | None = None,
         name: str = "two-stage",
         probabilities: tuple[Mapping[str, float], ...] | None = None,
+        page_seconds: Mapping[str, Mapping[str, float]] | None = None,
     ) -> Policy:
         """Choices and the router's own cost for ``rows``.
 
         ``params`` is ``(t1, t2)`` or ``(t1, t2, t3)``; a missing ``t3`` means never hybrid.
         ``seconds`` is `FeatureTable.seconds` (extractor -> time per question), ``layout_s``
         the layout time of each question's page. ``probabilities`` (from `probabilities`)
-        skips the models when many settings are scored on the same rows."""
+        skips the models when many settings are scored on the same rows. ``page_seconds``
+        (`FeatureTable.page_seconds`) is page-level signal time per extractor, e.g. the CLIP
+        page embedding of S6; a stage pays it for the extractors it uses."""
         t1, t2, *rest = params or self.params
         t3 = rest[0] if rest else OFF
         p1, p2, p3 = probabilities or self.probabilities(rows, features)
         choice, uses_ocr, page_s, question_s = {}, {}, {}, {}
+        both = (*self.stage1_extractors, *self.stage2_extractors)
         for r in rows:
             q = r.question_id
             spent = seconds[q]
+            on_page = (page_seconds or {}).get(q, {})
             question_s[q] = sum(spent[e] for e in self.stage1_extractors)
             if p1[q] >= t1:  # stage 1: the image is needed, decided without OCR
                 choice[q], uses_ocr[q] = "vision", False
-                page_s[q] = layout_s[q] if self.stage1_needs_layout else 0.0
+                page_s[q] = (layout_s[q] if self.stage1_needs_layout else 0.0) + sum(
+                    t for e, t in on_page.items() if e in self.stage1_extractors
+                )
                 continue
             uses_ocr[q] = True  # stage 2 reads the OCR, so the page pays for it
-            page_s[q] = layout_s[q] if self.any_needs_layout else 0.0
+            page_s[q] = (layout_s[q] if self.any_needs_layout else 0.0) + sum(
+                t for e, t in on_page.items() if e in both
+            )
             question_s[q] += sum(
                 spent[e] for e in self.stage2_extractors if e not in self.stage1_extractors
             )
@@ -221,6 +230,7 @@ def train_two_stage(
     t3: Sequence[float] | None = None,
     seed: int = 0,
     budget: float | None = None,
+    page_seconds: Mapping[str, Mapping[str, float]] | None = None,
 ) -> TwoStageRouter:
     """Fit the heads on ``train`` and choose ``(t1, t2)``, or ``(t1, t2, t3)`` when ``paths``
     includes hybrid, on ``val``.
@@ -254,7 +264,17 @@ def train_two_stage(
     )
     router.grid = [
         grid_point(
-            val, router.policy(val, features, seconds, layout_s, ps, probabilities=cached), ps
+            val,
+            router.policy(
+                val,
+                features,
+                seconds,
+                layout_s,
+                ps,
+                probabilities=cached,
+                page_seconds=page_seconds,
+            ),
+            ps,
         )
         for ps in settings
     ]
