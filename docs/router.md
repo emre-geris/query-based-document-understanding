@@ -176,6 +176,13 @@ for result in evaluate(val, [policy]):
   layout and OCR per page so later questions on the page reuse them. S5/S6 are embedded on
   the spot (`live_extractors`). The path rule is `TwoStageRouter.choose`, shared with the
   evaluation, so the demo decides exactly as the evaluated router does.
+- **Demo service** (`qdu.demo.DemoService`): routes with `LiveRouter`, answers with the chosen
+  path (or all three with `compare`), and adds up the cost as the evaluation does: scenario C
+  (OCR and layout in full), B (page work divided by the questions asked about the page so
+  far) and A (tokens). OCR runs once per page (`SharedOcr`), shared by the router and the
+  text/hybrid paths. Try it without a GPU (fake model; needs the `embed`, `paddle` and `rapid`
+  extras for S5, layout and CPU OCR):
+  `uv run qdu demo ask --image page.png --question "..." --compare`.
 - **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
   (optional `embed` extra, page images) into two gzips next to the run; the extractors only
   read them. Their measured time is charged through `cost(item) -> (question_s, page_s)`:

@@ -853,6 +853,57 @@ def cmd_layout_detect(args: argparse.Namespace) -> int:
     return 0 if total == pages else 1
 
 
+def build_demo_service(args: argparse.Namespace):
+    """The demo's router, OCR, layout and model from command-line options (``qdu demo``)."""
+    from qdu.demo import DemoService, SharedOcr, demo_fake_model
+    from qdu.models import create_model
+    from qdu.router.live import LiveRouter, live_extractors
+    from qdu.router.two_stage import load_two_stage
+
+    router, meta = load_two_stage(args.router)
+    names = {*router.stage1_extractors, *router.stage2_extractors}
+    question_encoder = clip_encoder = None
+    if names & {"s5", "s6"}:
+        from qdu.router.embed import PAGE_MODEL, QUESTION_MODEL, load_encoder
+
+        question_encoder = load_encoder(QUESTION_MODEL) if "s5" in names else None
+        clip_encoder = load_encoder(PAGE_MODEL) if "s6" in names else None
+    extractors = live_extractors(question_encoder, clip_encoder)
+    layout = None
+    if any(extractors[n].needs_layout for n in names):
+        from qdu.layout import PaddleLayout
+
+        layout = PaddleLayout(args.layout_model)
+    ocr = SharedOcr(_ocr(args.ocr, 3, None))
+    model = demo_fake_model() if args.model == "fake" else create_model(args.model)
+    return DemoService(LiveRouter(router, extractors, ocr, layout), model, ocr), meta
+
+
+def cmd_demo_ask(args: argparse.Namespace) -> int:
+    from PIL import Image
+
+    from qdu.demo import describe
+
+    try:
+        service, meta = build_demo_service(args)
+    except (ImportError, RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"Router {meta.get('router', args.router)} ({'/'.join(meta.get('paths', []))}), "
+        f"model {args.model}, OCR {args.ocr}"
+    )
+    if args.model == "fake":
+        print("Note: the fake model's answers and times mean nothing; never report them.")
+    with Image.open(args.image) as image:
+        page = image.convert("RGB")
+    for question in args.question:
+        answer = service.ask(question, page, args.image.stem, args.mode, args.compare)
+        print()
+        print(describe(answer))
+    return 0
+
+
 def _add_ocr_options(parser: argparse.ArgumentParser) -> None:
     from qdu.ocr import OCR_SPECS
 
@@ -860,6 +911,27 @@ def _add_ocr_options(parser: argparse.ArgumentParser) -> None:
         "--ocr", choices=OCR_SPECS, default="tesseract", help="OCR engine for text/hybrid"
     )
     parser.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
+
+
+def _add_demo_options(parser: argparse.ArgumentParser) -> None:
+    from qdu.demo.service import MODES
+    from qdu.ocr import OCR_SPECS
+
+    parser.add_argument(
+        "--router",
+        type=Path,
+        default=Path("runs/routers/two-stage-s5"),
+        help="folder of a router saved by qdu router two-stage",
+    )
+    parser.add_argument(
+        "--model", default="fake", help="fake, or openai:<model> for the vLLM server"
+    )
+    parser.add_argument(
+        "--ocr", choices=OCR_SPECS, default="rapid-mobile", help="OCR engine (CPU by default)"
+    )
+    parser.add_argument("--layout-model", default="PP-DocLayout-M")
+    parser.add_argument("--mode", choices=MODES, default="auto", help="auto: the router chooses")
+    parser.add_argument("--compare", action="store_true", help="also run the other two paths")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -903,6 +975,18 @@ def build_parser() -> argparse.ArgumentParser:
     warm.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
     warm.add_argument("--ocr-cache", type=Path, default=benchmark.DEFAULT_OCR_CACHE)
     warm.set_defaults(func=cmd_ocr_warm)
+
+    demo = sub.add_parser("demo", help="the demo: route, answer and cost one question")
+    demo_sub = demo.add_subparsers(dest="demo_command", required=True)
+    ask = demo_sub.add_parser(
+        "ask", help="route and answer questions about one page image, printing every cost"
+    )
+    ask.add_argument("--image", type=Path, required=True)
+    ask.add_argument(
+        "--question", action="append", required=True, help="repeat for several questions"
+    )
+    _add_demo_options(ask)
+    ask.set_defaults(func=cmd_demo_ask)
 
     layout = sub.add_parser("layout", help="layout regions per page (PP-DocLayout)")
     layout_sub = layout.add_subparsers(dest="layout_command", required=True)
