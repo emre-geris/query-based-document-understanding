@@ -88,6 +88,13 @@ OCR-free signals and buys OCR only when its expected value exceeds its cost.
 
 ### 2.1 Add two OCR-free signals (S5, S6)
 
+> **Status (14 Nov 2026): code done** (`qdu.router.embed`, `qdu router embed`, extractors `s5`,
+> `s6`, page-level cost in `FeatureTable.page_seconds` and the two-stage router). Differences
+> from the plan: S5 is also precomputed into `question_embeddings.jsonl.gz` (with the CLIP
+> question-page cosine `qsim` and its time), so routers train without sentence-transformers;
+> the dependency is not added yet (`uv add --optional embed sentence-transformers` needs the
+> network). Next: run `qdu router embed`, commit the two files, evaluate.
+
 - **S5 – question embedding**: `sentence-transformers/all-MiniLM-L6-v2`, 384-d, normalised;
   ~1.2 ms per question on the laptop CPU (batched).
 - **S6 – page image embedding**: `sentence-transformers/clip-ViT-B-32`, 512-d image vector,

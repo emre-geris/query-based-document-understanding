@@ -166,6 +166,12 @@ for result in evaluate(val, [policy]):
   head. `--paths text,vision` is the earlier two-way router; `--budget vision|hybrid|none|<s>`
   is the val C budget the thresholds must respect (default always-vision). The full grid is in
   `runs/routers/<name>/val_grid.csv`.
+- **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
+  (optional `embed` extra, page images) into two gzips next to the run; the extractors only
+  read them. Their measured time is charged through `cost(item) -> (question_s, page_s)`:
+  per-question time is added to the extractor's time, per-page time goes to
+  `FeatureTable.page_seconds` (like layout). `learned-cascade` rejects `s6`, since it does not
+  charge page-level signal time.
 - **Cascade baseline**: `qdu.router.cascade` (`read_confidence`, `cascade`, `sweep`); choose
   its threshold on `val` like λ. It is weak: on val it never reaches always-vision (78.4 vs
   88.0 points at equal C cost; `results/full-text-logprobs-qwen3.5-4b/README.md`).
