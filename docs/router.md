@@ -165,7 +165,10 @@ for result in evaluate(val, [policy]):
   stage 2 (after OCR) has a hybrid head (P(hybrid > vision) ≥ t3 → hybrid), then the text/vision
   head. `--paths text,vision` is the earlier two-way router; `--budget vision|hybrid|none|<s>`
   is the val C budget the thresholds must respect (default always-vision). The full grid is in
-  `runs/routers/<name>/val_grid.csv`.
+  `runs/routers/<name>/val_grid.csv`. The trained router is saved as `runs/routers/<name>/model.joblib`
+  (`save_two_stage` / `load_two_stage`, heads, TF-IDF vocabularies and thresholds plus the
+  run metadata), so the demo routes new questions without retraining; `runs/` is not committed,
+  so retrain it with the same command on a new machine.
 - **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
   (optional `embed` extra, page images) into two gzips next to the run; the extractors only
   read them. Their measured time is charged through `cost(item) -> (question_s, page_s)`:

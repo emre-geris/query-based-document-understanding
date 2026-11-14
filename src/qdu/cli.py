@@ -436,7 +436,7 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
     from qdu.router.baselines import select_point, write_grid
     from qdu.router.train import write_choices
-    from qdu.router.two_stage import ROUTER_PATHS, train_two_stage
+    from qdu.router.two_stage import MODEL_FILE, ROUTER_PATHS, save_two_stage, train_two_stage
 
     stage1, stage2 = _names(args.stage1), _names(args.stage2)
     paths = _names(args.paths)
@@ -549,12 +549,14 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
         labels=str(args.labels),
         labels_sha256=file_sha256(args.labels),
     )
+    meta["model"] = MODEL_FILE
     (out / "router.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    model_path = save_two_stage(router, out, meta)
     chosen = ", ".join(f"{k} = {v}" for k, v in zip(labels, router.params, strict=True))
     split_shares = ", ".join(f"{p} {v:.0%}" for p, v in shares.items())
     print(
         f"\n{chosen}; {stage2_share:.0%} of {args.split} questions reach stage 2 (pay OCR); "
-        f"chosen paths: {split_shares}; wrote {choices}"
+        f"chosen paths: {split_shares}; wrote {choices} and {model_path}"
     )
     print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
     return 0

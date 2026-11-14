@@ -32,6 +32,7 @@ stage-2 signals, so it adds no signal time).
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -282,3 +283,31 @@ def train_two_stage(
     best, router.met_budget = select_point(router.grid, router.budget)
     router.params = best.params  # type: ignore[assignment]
     return router
+
+
+MODEL_FILE = "model.joblib"
+"""A trained two-stage router inside its run folder (``runs/routers/<name>/``)."""
+
+
+def save_two_stage(router: TwoStageRouter, out_dir: Path, meta: Mapping[str, Any]) -> Path:
+    """Write the trained router (all heads, their TF-IDF vocabularies and the chosen thresholds)
+    with its run metadata, so the demo can route new questions without retraining."""
+    import joblib
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / MODEL_FILE
+    joblib.dump({"router": router, "meta": dict(meta)}, path)
+    return path
+
+
+def load_two_stage(path: Path) -> tuple[TwoStageRouter, dict[str, Any]]:
+    """The router and metadata written by `save_two_stage`; ``path`` is the file or its folder.
+
+    joblib files are pickles: load only routers this project trained (never a downloaded one)."""
+    import joblib
+
+    path = path / MODEL_FILE if path.is_dir() else path
+    saved = joblib.load(path)
+    if not isinstance(saved, dict) or not isinstance(saved.get("router"), TwoStageRouter):
+        raise ValueError(f"{path} is not a two-stage router written by qdu router two-stage")
+    return saved["router"], saved["meta"]

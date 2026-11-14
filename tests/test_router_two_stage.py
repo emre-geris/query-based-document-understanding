@@ -2,7 +2,7 @@ import pytest
 
 from qdu.cli import main
 from qdu.router.labels import LabelRow
-from qdu.router.two_stage import NeedsImage, train_two_stage
+from qdu.router.two_stage import NeedsImage, load_two_stage, save_two_stage, train_two_stage
 
 OCR_S = 0.5
 LAYOUT_S = 0.1
@@ -220,3 +220,39 @@ def test_three_way_needs_hybrid_gains_in_train(data):
 def test_cli_rejects_bad_budget(capsys):
     assert main(["router", "two-stage", "--budget", "cheap"]) == 2
     assert "--budget must be" in capsys.readouterr().err
+
+
+def test_saved_router_routes_like_the_trained_one(dense_data, tmp_path):
+    train, val, features, seconds, layout_s = dense_data
+    router = train_two_stage(
+        train,
+        val,
+        features,
+        seconds,
+        layout_s,
+        stage1=("s1", "s3"),
+        stage2=("s1", "s2", "s3"),
+        needs_layout=NEEDS_LAYOUT,
+        budget=10.0,
+    )
+    path = save_two_stage(router, tmp_path / "r", {"router": "r", "t1": router.params[0]})
+    loaded, meta = load_two_stage(tmp_path / "r")  # the folder works as well as the file
+    assert path.name == "model.joblib" and meta == {"router": "r", "t1": router.params[0]}
+    assert loaded.params == router.params
+    assert loaded.stage1_extractors == ("s1", "s3")
+    before = router.policy(val, features, seconds, layout_s)
+    after = loaded.policy(val, features, seconds, layout_s)
+    assert dict(after.choice) == dict(before.choice)
+    assert dict(after.page_s) == dict(before.page_s)
+    for a, b in zip(
+        router.probabilities(val, features), loaded.probabilities(val, features), strict=True
+    ):
+        assert a == pytest.approx(b)
+
+
+def test_load_rejects_other_files(tmp_path):
+    import joblib
+
+    joblib.dump({"something": 1}, tmp_path / "model.joblib")
+    with pytest.raises(ValueError, match="not a two-stage router"):
+        load_two_stage(tmp_path)
