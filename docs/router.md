@@ -161,6 +161,11 @@ for result in evaluate(val, [policy]):
 - **Router cost**: `features.router_cost(layout, doc_of)` gives `uses_ocr`, `page_s` (layout
   time) and `question_s` (extractor time) for `route` or a choices CSV. A two-stage router
   passes OCR and layout only for the questions that reached stage 2.
+- **Three-way two-stage router** (`qdu router two-stage`): stage 1 (OCR-free) sends to vision;
+  stage 2 (after OCR) has a hybrid head (P(hybrid > vision) ≥ t3 → hybrid), then the text/vision
+  head. `--paths text,vision` is the earlier two-way router; `--budget vision|hybrid|none|<s>`
+  is the val C budget the thresholds must respect (default always-vision). The full grid is in
+  `runs/routers/<name>/val_grid.csv`.
 - **Cascade baseline**: `qdu.router.cascade` (`read_confidence`, `cascade`, `sweep`); choose
   its threshold on `val` like λ. It is weak: on val it never reaches always-vision (78.4 vs
   88.0 points at equal C cost; `results/full-text-logprobs-qwen3.5-4b/README.md`).

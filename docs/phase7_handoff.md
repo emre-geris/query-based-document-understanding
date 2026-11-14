@@ -120,6 +120,13 @@ p ≥ t else vision, t chosen on val within always-vision's C cost): 86.7 vs 88.
 
 ### 2.2 Make the two-stage router three-way
 
+> **Status (14 Nov 2026): implemented** in `two_stage.py` / `qdu router two-stage`, with one
+> change to the plan below: the hybrid head decides *before* the text head (see CLAUDE.md
+> *Decisions*), and t3 is a quantile of the head's val outputs. Val (LightGBM): within the
+> always-vision budget no hybrid is chosen (84.5, the two-way result); with the always-hybrid
+> budget 88.1 at 1.68 s, +0.9 [+0.1, +1.6] vs always-hybrid at −25% cost but +0.1 [−0.1, +0.3]
+> vs always-vision at +0.24 s. Details: CLAUDE.md, Phase 7 C. Next: S5/S6 (section 2.1).
+
 `src/qdu/router/two_stage.py`, class `TwoStageRouter.policy`: today stage 1 sends "image
 needed" questions to vision and stage 2 chooses text vs vision. Change it to:
 
