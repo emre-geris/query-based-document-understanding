@@ -144,6 +144,8 @@ Source of truth for what to build next. **Where things stand (12 Nov 2026):** Ph
 
 ### Phase 6 — Demo & deliverables (H9–H14)
 - [ ] Gradio demo: upload page + question → chosen path, answer, latency (`qdu demo`)
+  - [x] Laptop part (15 Nov 2026, branch `feat/demo`): the saved two-stage router routes new pages live (`qdu.router.live`), `qdu.demo` answers with the chosen path or all three, costs every question in scenarios C/B/A and scores example pages against gold; `qdu demo serve` opens the interface (the design draft as a web page served by FastAPI: chat, analysis panel with collapsible sections, presentation mode that walks through a page's three questions with a narrative generated from the result). Examples are val pages whose questions need text / vision / only hybrid (`qdu demo examples`); with `--model replay` they show the labelled run's recorded answers, times and tokens, so the demo runs without a GPU and shows real numbers. On `docvqa/4848` the router picks text correctly for the first question and errs on the other two (text instead of vision; vision where only hybrid answers), consistent with the val result; the presentation shows this as it is
+  - [ ] Live answers from Qwen3.5 on the L4 (`qdu demo serve --model openai:Qwen/Qwen3.5-4B --host 0.0.0.0` in the Colab runbook, reached through a tunnel; Emre's approval)
 - [ ] Academic activity documented by **14 Dec** (TÜBİTAK 2209-A or paper)
 - [ ] Vize (16 Nov upload), final (14 Dec), report + demo (28 Dec), poster (5 Jan)
 

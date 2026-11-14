@@ -105,6 +105,8 @@ class DemoAnswer:
     """Gold answers (example pages only)."""
     metric: str | None = None
     """The dataset's primary metric used for ``score`` (anls, relaxed_accuracy or f1)."""
+    ocr_text: str | None = None
+    """The page's OCR text, when this question needed it."""
 
     @property
     def score(self) -> float | None:
@@ -210,6 +212,7 @@ class DemoService:
             router_s=(decision.signal_s + decision.decide_s) if decision else 0.0,
             gold=tuple(answers),
             metric=metric,
+            ocr_text=page_ocr.text if needs_ocr and page_ocr else None,
         )
 
     def forget(self, page_id: str) -> None:

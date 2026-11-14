@@ -189,6 +189,12 @@ for result in evaluate(val, [policy]):
   the choice equals the evaluation's) and, with the default `--model replay`, shows the
   labelled run's recorded answers, times and tokens, scored against the gold answers. No GPU
   and no OCR or layout install is needed for examples.
+- **Demo interface** (`qdu demo serve`, optional `demo` extra: FastAPI + uvicorn): the design
+  draft as a web page (`qdu/demo/static/index.html`, plain HTML and JavaScript, light theme)
+  served by `qdu.demo.web`, which keeps one `DemoSession` and answers each button with its state
+  as JSON (`session_view`). The presentation narrative is generated from each answer
+  (`render.step_story`), so it never claims more than the result. Gradio was tried first and
+  dropped: it could not follow the design.
 - **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
   (optional `embed` extra, page images) into two gzips next to the run; the extractors only
   read them. Their measured time is charged through `cost(item) -> (question_s, page_s)`:

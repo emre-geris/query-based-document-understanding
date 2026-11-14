@@ -913,7 +913,12 @@ def cmd_demo_ask(args: argparse.Namespace) -> int:
         f"Router {meta.get('router', args.router)} ({'/'.join(meta.get('paths', []))}), "
         f"model {args.model}, OCR {args.ocr} (stored for example pages)"
     )
-    if args.model in ("fake", "replay"):
+    if args.model == "replay":
+        print(
+            "Note: example questions show the labelled run's recorded answers (real); other "
+            "questions get fake-model answers, whose answers and times mean nothing."
+        )
+    elif args.model == "fake":
         print("Note: fake-model answers and times mean nothing; never report them.")
     if args.example:
         examples = {e.question_id: e for e in load_examples(args.run, args.manifest)}
@@ -939,6 +944,40 @@ def cmd_demo_ask(args: argparse.Namespace) -> int:
         answer = service.ask(question, page, args.image.stem, args.mode, args.compare)
         print()
         print(describe(answer))
+    return 0
+
+
+def cmd_demo_serve(args: argparse.Namespace) -> int:
+    from qdu.data import ImageStore
+    from qdu.demo import load_examples, load_recorded, showcase
+    from qdu.demo.session import DemoSession
+    from qdu.demo.web import create_app, serve
+
+    try:
+        service, meta = build_demo_service(args)
+        pages = showcase(load_examples(args.run, args.manifest), per_dataset=args.per_dataset)
+    except (ImportError, RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    ids = [e.question_id for page in pages for e in page]
+    recorded = load_recorded(ids, args.run) if args.model == "replay" else {}
+    store = ImageStore()
+    model = {
+        "replay": "örnek sorular: GPU koşusunun kayıtlı cevapları; diğer sorular: deneme modeli",
+        "fake": "deneme modeli (cevaplar anlamsız)",
+    }.get(args.model, args.model)
+    status = (
+        f"Yönlendirici: {meta.get('router', args.router)} "
+        f"({'/'.join(meta.get('paths', []))}) · Model: {model}"
+    )
+    session = DemoSession(service, pages, lambda e: store.get(e.record).convert("RGB"), recorded)
+    try:
+        app = create_app(session, status)
+    except ImportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"{len(pages)} example pages; {status}")
+    serve(app, host=args.host, port=args.port)
     return 0
 
 
@@ -1049,6 +1088,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_demo_options(ask)
     ask.set_defaults(func=cmd_demo_ask)
+    sv = demo_sub.add_parser("serve", help="open the demo in the browser (needs the demo extra)")
+    _add_demo_options(sv)
+    sv.add_argument("--per-dataset", type=int, default=1, help="example pages per dataset")
+    sv.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to reach it from other machines")
+    sv.add_argument("--port", type=int, default=7860)
+    sv.set_defaults(func=cmd_demo_serve)
     ex = demo_sub.add_parser("examples", help="val pages whose questions need different paths")
     ex.add_argument("--per-dataset", type=int, default=2)
     ex.add_argument("--run", type=Path, default=Path("results/full-qwen3.5-4b"))

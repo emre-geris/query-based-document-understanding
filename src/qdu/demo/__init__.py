@@ -1,7 +1,9 @@
 """The demo: route a question about an uploaded page, answer it and report every cost.
 
-`DemoService` (`qdu.demo.service`) is the part the user interface calls; the interface itself
-only displays what it returns. `qdu demo ask` runs it once from the command line.
+`DemoService` (`qdu.demo.service`) routes, answers and costs; `DemoSession`
+(`qdu.demo.session`) is one user's page and answers; `qdu.demo.web` serves the design draft
+as a web page that draws them (``qdu demo serve``); `qdu.demo.render` holds the shared wording
+and the presentation narrative. ``qdu demo ask`` runs the service once from the command line.
 """
 
 from qdu.demo.examples import (
