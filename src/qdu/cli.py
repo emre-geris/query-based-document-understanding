@@ -434,11 +434,22 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     from qdu.layout import load_layout
     from qdu.provenance import file_sha256, run_metadata
     from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
-    from qdu.router.baselines import write_grid
+    from qdu.router.baselines import select_point, write_grid
     from qdu.router.train import write_choices
-    from qdu.router.two_stage import train_two_stage
+    from qdu.router.two_stage import ROUTER_PATHS, train_two_stage
 
     stage1, stage2 = _names(args.stage1), _names(args.stage2)
+    paths = _names(args.paths)
+    if not {"text", "vision"} <= set(paths) or not set(paths) <= set(ROUTER_PATHS):
+        print(f"--paths must include text and vision, from {list(ROUTER_PATHS)}", file=sys.stderr)
+        return 2
+    three_way = "hybrid" in paths
+    if args.budget not in ("vision", "hybrid", "none"):
+        try:
+            float(args.budget)
+        except ValueError:
+            print("--budget must be vision, hybrid, none or seconds", file=sys.stderr)
+            return 2
     unknown = [e for e in (*stage1, *stage2) if e not in EXTRACTORS]
     if unknown:
         print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
@@ -460,6 +471,15 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     layout = load_layout(args.layout) if any(needs_layout.values()) else None
     table = build_features(router_inputs(rows, ocr, layout), extractors)
     layout_s = {r.question_id: layout[r.doc_id].latency_s if layout else 0.0 for r in rows}
+    if args.budget in ("vision", "hybrid", "none"):
+        budget_name = f"always-{args.budget}" if args.budget != "none" else "none"
+        budget = {
+            "vision": None,
+            "hybrid": sum(r.cost_c["hybrid"] for r in val) / len(val),
+            "none": float("inf"),
+        }[args.budget]
+    else:
+        budget_name, budget = "fixed", float(args.budget)
     try:
         router = train_two_stage(
             train,
@@ -470,7 +490,9 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
             stage1=stage1,
             stage2=stage2,
             needs_layout=needs_layout,
+            paths=paths,
             seed=args.seed,
+            budget=budget,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -478,40 +500,58 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
 
     name = args.name
     out = args.out_dir / name
-    print(f"Router {name}: stage 1 {','.join(stage1)} (no OCR), stage 2 {','.join(stage2)}")
-    print(f"Validation grid (C cost budget = always-vision {router.budget:.3f} s):")
-    print(f"  {'t1':>6}{'t2':>6}{'score':>8}{'C s':>8}   text/vision/hybrid")
-    for g in router.grid:
-        mark = "  <- chosen" if g.params == router.params else ""
+    labels = ("t1", "t2", "t3") if three_way else ("t1", "t2")
+    print(
+        f"Router {name}: paths {'/'.join(paths)}; stage 1 {','.join(stage1)} (no OCR), "
+        f"stage 2 {','.join(stage2)}" + (" + hybrid head" if three_way else "")
+    )
+    print(f"Validation grid (C cost budget = {budget_name} {router.budget:.3f} s):")
+    head = "".join(f"{k:>6}" for k in labels)
+    print(f"  {head}{'score':>8}{'C s':>8}   text/vision/hybrid")
+
+    def show(g, mark=""):
+        values = "".join(f"{v:>6.2f}" for v in g.params)
         shares = "/".join(f"{g.shares[p]:.2f}" for p in ("text", "vision", "hybrid"))
-        print(
-            f"  {g.params[0]:>6.2f}{g.params[1]:>6.2f}{g.score * 100:>8.1f}{g.cost:>8.3f}"
-            f"   {shares}{mark}"
-        )
+        print(f"  {values}{g.score * 100:>8.1f}{g.cost:>8.3f}   {shares}{mark}")
+
+    if three_way:  # hundreds of settings: the best within budget per t3 (full grid in the CSV)
+        for t3 in sorted({g.params[2] for g in router.grid}):
+            pool = [g for g in router.grid if g.params[2] == t3]
+            best, within = select_point(pool, router.budget)
+            mark = "  <- chosen" if best.params == router.params else ""
+            show(best, mark + ("" if within else "  (over budget)"))
+    else:
+        for g in router.grid:
+            show(g, "  <- chosen" if g.params == router.params else "")
     if not router.met_budget:
         print("  No setting stays within the budget: the most accurate one is kept.")
 
     policy = router.policy(target, table.features, table.seconds, layout_s, name=name)
     choices = out / (f"{name}.csv" if args.split == "val" else f"{name}-test.csv")
     write_choices(policy, target, choices)
-    write_grid(router.grid, ("t1", "t2"), out / "val_grid.csv")
+    write_grid(router.grid, labels, out / "val_grid.csv")
     stage2_share = sum(policy.uses_ocr.values()) / len(target)
+    shares = {p: sum(c == p for c in policy.choice.values()) / len(target) for p in ROUTER_PATHS}
     meta = run_metadata(
         router=name,
+        paths=list(paths),
         stage1=stage1,
         stage2=stage2,
-        t1=router.params[0],
-        t2=router.params[1],
+        **dict(zip(labels, router.params, strict=True)),
+        shares=shares,
         met_budget=router.met_budget,
-        budget_c_s=router.budget,
+        budget=budget_name,
+        budget_c_s=router.budget if router.budget != float("inf") else None,
         seed=args.seed,
         labels=str(args.labels),
         labels_sha256=file_sha256(args.labels),
     )
     (out / "router.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    chosen = ", ".join(f"{k} = {v}" for k, v in zip(labels, router.params, strict=True))
+    split_shares = ", ".join(f"{p} {v:.0%}" for p, v in shares.items())
     print(
-        f"\nt1 = {router.params[0]}, t2 = {router.params[1]}; {stage2_share:.0%} of "
-        f"{args.split} questions reach stage 2 (pay OCR); wrote {choices}"
+        f"\n{chosen}; {stage2_share:.0%} of {args.split} questions reach stage 2 (pay OCR); "
+        f"chosen paths: {split_shares}; wrote {choices}"
     )
     print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
     return 0
@@ -938,11 +978,23 @@ def build_parser() -> argparse.ArgumentParser:
     bl.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     bl.set_defaults(func=cmd_router_baseline)
     ts = router_sub.add_parser(
-        "two-stage", help="OCR-free stage 1, OCR signals only for uncertain questions"
+        "two-stage",
+        help="three-way router: OCR-free stage 1, OCR signals and a hybrid head only when unsure",
     )
     ts.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
     ts.add_argument("--stage1", default="s1,s3", help="OCR-free signals for stage 1")
     ts.add_argument("--stage2", default="s1,s2,s3,s4", help="signals for stage 2 (after OCR)")
+    ts.add_argument(
+        "--paths",
+        default="text,vision,hybrid",
+        help="paths the router may choose; 'text,vision' reproduces the earlier two-way router",
+    )
+    ts.add_argument(
+        "--budget",
+        default="vision",
+        help="val C-cost budget for the thresholds: vision (default, the success baseline), "
+        "hybrid, none, or seconds",
+    )
     ts.add_argument(
         "--split", choices=("val", "test"), default="val", help="split to write choices for"
     )
