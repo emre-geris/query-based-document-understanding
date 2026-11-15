@@ -74,6 +74,7 @@ def build_labels(
     split_scheme: str = DEFAULT_SCHEME,
     tatdqa_reports: Mapping[str, str] | None = None,
     extra_runs: Sequence[Path] = (),
+    chartqa_exact_years: bool = False,
 ) -> list[LabelRow]:
     records = {r.question_id: r for r in read_manifest(manifest)}
     latest: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
@@ -99,7 +100,13 @@ def build_labels(
         ocr = next((r["ocr_latency_s"] for r in rs.values() if r.get("ocr_latency_s")), 0.0)
         uses_ocr = {p: rs[p].get("ocr_latency_s") is not None for p in paths}
         score = {
-            p: primary_score(dataset_of(qid), rs[p]["prediction"], rs[p]["answers"]) for p in paths
+            p: primary_score(
+                dataset_of(qid),
+                rs[p]["prediction"],
+                rs[p]["answers"],
+                chartqa_exact_years=chartqa_exact_years,
+            )
+            for p in paths
         }
         model = {p: rs[p]["model_latency_s"] for p in paths}
         cost_c = {p: model[p] + (ocr if uses_ocr[p] else 0.0) for p in paths}

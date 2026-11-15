@@ -28,11 +28,19 @@ def primary_metric(dataset: str) -> str:
     return PRIMARY_METRIC.get(dataset, DEFAULT_METRIC)
 
 
-def primary_score(dataset: str, prediction: str, answers: Iterable[str]) -> float:
+def primary_score(
+    dataset: str,
+    prediction: str,
+    answers: Iterable[str],
+    *,
+    chartqa_exact_years: bool = False,
+) -> float:
+    """The dataset's primary metric. ``chartqa_exact_years`` scores ChartQA years by exact
+    match instead of 5% tolerance (a sensitivity check; `qdu.evaluation.relaxed`)."""
     answers = list(answers)
     metric = primary_metric(dataset)
     if metric == "relaxed_accuracy":
-        return float(relaxed_match(prediction, answers))
+        return float(relaxed_match(prediction, answers, exact_years=chartqa_exact_years))
     if metric == "f1":
         return token_f1(prediction, answers)
     return anls_score(prediction, answers)

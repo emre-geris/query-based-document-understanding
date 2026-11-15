@@ -271,6 +271,7 @@ def cmd_router_labels(args: argparse.Namespace) -> int:
         tatdqa_reports=reports,
         extra_runs=args.extra_run,
         paths=paths,
+        chartqa_exact_years=args.chartqa_exact_years,
     )
     out = args.out or args.run_dir / "labels.csv"
     write_labels(rows, out, paths)
@@ -1408,6 +1409,12 @@ def build_parser() -> argparse.ArgumentParser:
     lab.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
     lab.add_argument("--tolerance", type=float, default=0.0, help="score tie tolerance (oracle)")
     lab.add_argument("--out", type=Path, help="default <run_dir>/labels.csv")
+    lab.add_argument(
+        "--chartqa-exact-years",
+        action="store_true",
+        help="sensitivity check: ChartQA years must match exactly (the official relaxed "
+        "accuracy gives them 5%% tolerance); write it to another --out",
+    )
     lab.add_argument(
         "--extra-run",
         type=Path,
