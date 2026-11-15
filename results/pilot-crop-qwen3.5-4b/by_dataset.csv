@@ -1,0 +1,5 @@
+dataset,n,crop,oracle,best_single,headroom
+ALL,300,0.7441,0.7441,crop,0.0000
+chartqa,100,0.7600,0.7600,crop,0.0000
+docvqa,100,0.8374,0.8374,crop,0.0000
+infographicvqa,100,0.6351,0.6351,crop,0.0000
