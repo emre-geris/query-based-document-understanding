@@ -8,11 +8,14 @@ single page that holds its evidence (the page of its ``block_mapping`` blocks), 
 same one-page pipelines as the other datasets. Questions whose evidence spans two pages are
 skipped; :func:`build_tatdqa` reports how many.
 
-TAT-DQA is used only as unseen test data. Its official metric (exact match / F1 with
-numeric scale) differs from ANLS; numeric gold answers are rounded to two decimals as in the
-official evaluation.
+Each TAT-DQA document is a few pages cut from a company's annual report, and one report can
+give several documents (277 documents from 126 reports), so router splits group the documents
+by report (:func:`report_of_documents`, ``benchmarks/tatdqa_reports.csv``) to keep a report's
+tables out of two splits. Its official metric (exact match / F1 with numeric scale) differs from
+ANLS; numeric gold answers are rounded to two decimals as in the official evaluation.
 """
 
+import csv
 import io
 import json
 import zipfile
@@ -114,6 +117,33 @@ def build_tatdqa(gold_path: Path, docs_zip: Path) -> tuple["Dataset", dict[str, 
     stats: dict[str, int] = {}
     rows = list(iter_rows(gold_path, docs_zip, stats))
     return Dataset.from_list(rows, features=features), stats
+
+
+def report_of_documents(gold_path: Path) -> dict[str, str]:
+    """Document uid -> the annual report (PDF file name) it was cut from."""
+    gold = json.loads(Path(gold_path).read_text(encoding="utf-8"))
+    return {entry["doc"]["uid"]: entry["doc"]["source"] for entry in gold}
+
+
+def write_reports(reports: dict[str, str], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["doc_uid", "report"])
+        for uid in sorted(reports):
+            w.writerow([uid, reports[uid]])
+
+
+def read_reports(path: Path) -> dict[str, str]:
+    with Path(path).open(newline="", encoding="utf-8") as f:
+        return {r["doc_uid"]: r["report"] for r in csv.DictReader(f)}
+
+
+def gold_file() -> Path:
+    """The official test gold JSON, downloaded into the HF cache on first use."""
+    from huggingface_hub import hf_hub_download
+
+    return Path(hf_hub_download(HF_REPO, GOLD_FILE, repo_type="dataset"))
 
 
 def load_tatdqa() -> "Dataset":

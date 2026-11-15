@@ -1,7 +1,9 @@
 """The label table: one row per question with every path's score and cost.
 
 It is what router training and evaluation start from, derived from a finished run
-(``predictions.jsonl``) and its manifest (router split per question), without calling a model:
+(``predictions.jsonl``) and its manifest, without calling a model. The router split is the
+manifest's under split scheme ``v1`` and re-derived for TAT-DQA under ``v2``, the default
+(`qdu.data.splits.router_split`):
 
 - ``score_<path>``: the dataset's primary metric (qdu.evaluation.primary)
 - ``model_s_<path>``: measured model latency; ``ocr_s``: the page's OCR time, paid by the
@@ -16,12 +18,13 @@ Only questions with a successful row for every path are included.
 
 import csv
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
 from qdu.data import read_manifest
+from qdu.data.splits import DEFAULT_SCHEME, router_split
 from qdu.evaluation.metrics import dataset_of
 from qdu.evaluation.oracle import DEFAULT_COST_ORDER, oracle_label
 from qdu.evaluation.primary import primary_score
@@ -61,7 +64,13 @@ class LabelRow:
 
 
 def build_labels(
-    run_dir: Path, manifest: Path, *, tolerance: float = 0.0, paths: Sequence[str] = PATHS
+    run_dir: Path,
+    manifest: Path,
+    *,
+    tolerance: float = 0.0,
+    paths: Sequence[str] = PATHS,
+    split_scheme: str = DEFAULT_SCHEME,
+    tatdqa_reports: Mapping[str, str] | None = None,
 ) -> list[LabelRow]:
     records = {r.question_id: r for r in read_manifest(manifest)}
     latest: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
@@ -97,7 +106,9 @@ def build_labels(
                 question_id=qid,
                 doc_id=first["doc_id"],
                 dataset=dataset_of(qid),
-                split=record.split,
+                split=router_split(
+                    record.dataset, record.doc_id, record.split, split_scheme, tatdqa_reports
+                ),
                 stratum=first["stratum"],
                 question=first["question"],
                 questions_on_page=n,

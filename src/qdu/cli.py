@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from qdu import benchmark
+from qdu.data.splits import DEFAULT_SCHEME, SPLIT_SCHEMES
 from qdu.pipelines import PIPELINE_NAMES, PipelineInput, build_pipeline
 
 
@@ -54,6 +55,15 @@ def cmd_data_download(args: argparse.Namespace) -> int:
         splits = {s: sum(r.split == s for r in records) for s in ("train", "val", "test")}
         docs = len({r.doc_id for r in records})
         print(f"  {len(records)} questions, {docs} documents, router splits {splits}")
+    return 0
+
+
+def cmd_data_tatdqa_reports(args: argparse.Namespace) -> int:
+    from qdu.data.tatdqa import gold_file, report_of_documents, write_reports
+
+    reports = report_of_documents(gold_file())
+    write_reports(reports, args.out)
+    print(f"{len(reports)} documents from {len(set(reports.values()))} reports -> {args.out}")
     return 0
 
 
@@ -230,9 +240,17 @@ def _splits(split: str) -> list[str] | None:
 
 
 def cmd_router_labels(args: argparse.Namespace) -> int:
+    from qdu.data.tatdqa import read_reports
     from qdu.router import build_labels, write_labels
 
-    rows = build_labels(args.run_dir, args.manifest, tolerance=args.tolerance)
+    reports = read_reports(args.tatdqa_reports) if args.split_scheme != "v1" else None
+    rows = build_labels(
+        args.run_dir,
+        args.manifest,
+        tolerance=args.tolerance,
+        split_scheme=args.split_scheme,
+        tatdqa_reports=reports,
+    )
     out = args.out or args.run_dir / "labels.csv"
     write_labels(rows, out)
     by_split: dict[str, int] = {}
@@ -1057,6 +1075,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="comma-separated: docvqa, infographicvqa, chartqa, tatdqa (default: all)",
     )
     download.set_defaults(func=cmd_data_download)
+    reports = data_sub.add_parser(
+        "tatdqa-reports", help="TAT-DQA document -> annual report, for report-grouped splits"
+    )
+    reports.add_argument("--out", type=Path, default=Path("benchmarks/tatdqa_reports.csv"))
+    reports.set_defaults(func=cmd_data_tatdqa_reports)
 
     ocr = sub.add_parser("ocr", help="compare OCR engines")
     ocr_sub = ocr.add_subparsers(dest="ocr_command", required=True)
@@ -1178,6 +1201,18 @@ def build_parser() -> argparse.ArgumentParser:
     lab.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
     lab.add_argument("--tolerance", type=float, default=0.0, help="score tie tolerance (oracle)")
     lab.add_argument("--out", type=Path, help="default <run_dir>/labels.csv")
+    lab.add_argument(
+        "--split-scheme",
+        choices=SPLIT_SCHEMES,
+        default=DEFAULT_SCHEME,
+        help="v2 (default): TAT-DQA split by annual report like the others; v1: TAT-DQA test-only",
+    )
+    lab.add_argument(
+        "--tatdqa-reports",
+        type=Path,
+        default=Path("benchmarks/tatdqa_reports.csv"),
+        help="TAT-DQA document -> report (qdu data tatdqa-reports)",
+    )
     lab.set_defaults(func=cmd_router_labels)
     ev = router_sub.add_parser(
         "evaluate", help="baselines and routing choices vs always-vision, with document-level CIs"
