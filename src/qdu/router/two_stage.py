@@ -7,20 +7,32 @@ router splits the decision:
 1. **Stage 1** sees only OCR-free signals (by default S1 question cues and S3 page layout) and
    the question's TF-IDF. If the predicted probability that the image is needed (vision scores
    higher than text) reaches ``t1``, the question goes to vision and no OCR is run.
-2. **Stage 2** runs only for the remaining questions: OCR is paid, every signal (S1-S4) is
-   available, and the question goes to vision if its own probability reaches ``t2``, else to
-   text.
+2. **Stage 2** runs only for the remaining questions: OCR is paid and every signal (S1-S4) is
+   available. In the three-way router (the default) a **hybrid head** decides first: if the
+   predicted probability that hybrid scores higher than vision reaches ``t3``, the question goes
+   to hybrid. Otherwise it goes to vision if its image-needed probability reaches ``t2``, else to
+   text. Hybrid needs the OCR text, which stage 2 has already paid for, so its extra cost is
+   only the model-time difference; stage 1 never chooses hybrid, because it has not run OCR.
 
-Both stages are LightGBM classifiers fitted on ``train``; ``(t1, t2)`` is chosen on ``val`` like
-the other routers' λ and thresholds: the most accurate setting whose scenario-C cost stays
-within always-vision's (`qdu.router.baselines.select_point`). Hybrid is not a choice: on the
-full run it ties with vision in score at a higher cost. Each question is charged its stage-1
-signal time, the layout time if a used signal needs layout, and, if it reached stage 2, the
-page's OCR and the stage-2 signal time.
+The hybrid head decides before the text/vision head because most questions that only hybrid
+answers are ones that text alone also fails (the image head, trained on vision > text, cannot
+see them); on val this order is also slightly more accurate. With ``t3 = 1.01`` (or ``paths =
+("text", "vision")``) the router is the earlier two-way one, so its three-way grid contains every
+two-way setting and the old result stays reproducible.
+
+All heads are LightGBM classifiers fitted on ``train``; ``(t1, t2[, t3])`` is chosen on ``val``
+like the other routers' λ and thresholds: the most accurate setting whose scenario-C cost stays
+within a budget, by default always-vision's (`qdu.router.baselines.select_point`). The hybrid
+head is badly calibrated in absolute terms (P(hybrid > vision) is rare), so its thresholds are
+quantiles of its val outputs (`T3_QUANTILES`), as in `qdu.router.variants`. Each question is
+charged its stage-1 signal time, the layout time if a used signal needs layout, and, if it
+reached stage 2, the page's OCR and the stage-2 signal time (the hybrid head reads the same
+stage-2 signals, so it adds no signal time).
 """
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -56,14 +68,33 @@ T1 = (0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1.01)
 T2 = (0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 1.01)
 """Threshold grids; 1.01 switches a stage's vision decision off."""
 
+T3_QUANTILES = (0.5, 0.7, 0.8, 0.85, 0.9, 0.95, 0.97, 0.99)
+"""Hybrid-head thresholds: these quantiles of its val outputs, plus 1.01 (never hybrid)."""
+
+OFF = 1.01
+
+ROUTER_PATHS = ("text", "vision", "hybrid")
+"""Paths the two-stage router can choose; text and vision are always among them."""
+
+TARGETS = {
+    "image": ("vision", "text"),
+    "hybrid": ("hybrid", "vision"),
+}
+"""A head's training target: 1 when the first path scores strictly higher than the second.
+``image``: the page image is needed (vision beats text); ``hybrid``: adding the OCR text to the
+image helps (hybrid beats vision)."""
+
 
 @dataclass
 class NeedsImage:
-    """LightGBM classifier for P(vision scores higher than text) from signals + question TF-IDF."""
+    """LightGBM classifier from signals + question TF-IDF for P(vision scores higher than text)
+    or, with ``target="hybrid"``, P(hybrid scores higher than vision)."""
 
     prefixes: tuple[str, ...]
     """Feature-name prefixes this stage may use, e.g. ``("s1_", "s3_")``."""
     seed: int = 0
+    target: str = "image"
+    """Key of `TARGETS`."""
     feature_names: list[str] = field(default_factory=list)
     _model: Any = field(default=None, repr=False)
     _vectorizer: Any = field(default=None, repr=False)
@@ -90,9 +121,15 @@ class NeedsImage:
         self.feature_names = sorted(
             {k for r in rows for k in features[r.question_id] if k.startswith(self.prefixes)}
         )
-        y = [int(r.score["vision"] > r.score["text"]) for r in rows]
+        if self.target not in TARGETS:
+            raise ValueError(f"unknown target {self.target!r}; choose from {sorted(TARGETS)}")
+        better, worse = TARGETS[self.target]
+        y = [int(r.score[better] > r.score[worse]) for r in rows]
         if len(set(y)) < 2:
-            raise ValueError("two-stage router needs both labels in the training rows")
+            raise ValueError(
+                f"two-stage router needs both labels in the training rows ({better} > {worse}); "
+                "without hybrid gains, train the two-way router (paths text, vision)"
+            )
         self._model = lgb.LGBMClassifier(**lgbm_params(self.seed)).fit(
             self._design(rows, features, fit=True), y
         )
@@ -113,10 +150,40 @@ class TwoStageRouter:
     stage2_extractors: tuple[str, ...]
     stage1_needs_layout: bool
     any_needs_layout: bool
-    params: tuple[float, float] = (1.01, 1.01)
+    params: tuple[float, ...] = (OFF, OFF)
+    hybrid: NeedsImage | None = None
+    """Hybrid head (target ``hybrid``, stage-2 signals); None for the two-way router."""
     grid: list[GridPoint] = field(default_factory=list)
     budget: float = 0.0
     met_budget: bool = False
+
+    def probabilities(
+        self, rows: Sequence[LabelRow], features: Features
+    ) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+        """Stage-1, stage-2 and hybrid-head probabilities (the last empty without the head)."""
+        p3 = self.hybrid.predict(rows, features) if self.hybrid is not None else {}
+        return self.stage1.predict(rows, features), self.stage2.predict(rows, features), p3
+
+    def choose(
+        self,
+        p1: float,
+        p2: float | None = None,
+        p3: float | None = None,
+        params: tuple[float, ...] | None = None,
+    ) -> tuple[str, int]:
+        """The path for one question and the stage that decided it, from its head
+        probabilities. ``p2`` (and ``p3``) are needed only when stage 1 does not decide; the
+        live router (`qdu.router.live`) runs OCR only then. The single place the rule lives,
+        so evaluation and the demo choose identically."""
+        t1, t2, *rest = params or self.params
+        t3 = rest[0] if rest else OFF
+        if p1 >= t1:  # stage 1: the image is needed, decided without OCR
+            return "vision", 1
+        if p2 is None:
+            raise ValueError("stage 1 did not decide: the stage-2 probability is needed")
+        if t3 < OFF and p3 is not None and p3 >= t3:  # OCR already paid: only model time
+            return "hybrid", 2
+        return ("vision" if p2 >= t2 else "text"), 2
 
     def policy(
         self,
@@ -124,31 +191,41 @@ class TwoStageRouter:
         features: Features,
         seconds: Mapping[str, Mapping[str, float]],
         layout_s: Mapping[str, float],
-        params: tuple[float, float] | None = None,
+        params: tuple[float, ...] | None = None,
         name: str = "two-stage",
+        probabilities: tuple[Mapping[str, float], ...] | None = None,
+        page_seconds: Mapping[str, Mapping[str, float]] | None = None,
     ) -> Policy:
         """Choices and the router's own cost for ``rows``.
 
+        ``params`` is ``(t1, t2)`` or ``(t1, t2, t3)``; a missing ``t3`` means never hybrid.
         ``seconds`` is `FeatureTable.seconds` (extractor -> time per question), ``layout_s``
-        the layout time of each question's page."""
-        t1, t2 = params or self.params
-        p1 = self.stage1.predict(rows, features)
-        p2 = self.stage2.predict(rows, features)
+        the layout time of each question's page. ``probabilities`` (from `probabilities`)
+        skips the models when many settings are scored on the same rows. ``page_seconds``
+        (`FeatureTable.page_seconds`) is page-level signal time per extractor, e.g. the CLIP
+        page embedding of S6; a stage pays it for the extractors it uses."""
+        p1, p2, p3 = probabilities or self.probabilities(rows, features)
         choice, uses_ocr, page_s, question_s = {}, {}, {}, {}
+        both = (*self.stage1_extractors, *self.stage2_extractors)
         for r in rows:
             q = r.question_id
             spent = seconds[q]
+            on_page = (page_seconds or {}).get(q, {})
             question_s[q] = sum(spent[e] for e in self.stage1_extractors)
-            if p1[q] >= t1:  # stage 1: the image is needed, decided without OCR
-                choice[q], uses_ocr[q] = "vision", False
-                page_s[q] = layout_s[q] if self.stage1_needs_layout else 0.0
+            choice[q], stage = self.choose(p1[q], p2[q], p3.get(q), params)
+            if stage == 1:  # decided without OCR
+                uses_ocr[q] = False
+                page_s[q] = (layout_s[q] if self.stage1_needs_layout else 0.0) + sum(
+                    t for e, t in on_page.items() if e in self.stage1_extractors
+                )
                 continue
             uses_ocr[q] = True  # stage 2 reads the OCR, so the page pays for it
-            page_s[q] = layout_s[q] if self.any_needs_layout else 0.0
+            page_s[q] = (layout_s[q] if self.any_needs_layout else 0.0) + sum(
+                t for e, t in on_page.items() if e in both
+            )
             question_s[q] += sum(
                 spent[e] for e in self.stage2_extractors if e not in self.stage1_extractors
             )
-            choice[q] = "vision" if p2[q] >= t2 else "text"
         return Policy(name, choice, uses_ocr, page_s, question_s)
 
 
@@ -162,28 +239,89 @@ def train_two_stage(
     stage1: Sequence[str] = ("s1", "s3"),
     stage2: Sequence[str] = ("s1", "s2", "s3", "s4"),
     needs_layout: Mapping[str, bool],
+    paths: Sequence[str] = ROUTER_PATHS,
     t1: Sequence[float] = T1,
     t2: Sequence[float] = T2,
+    t3: Sequence[float] | None = None,
     seed: int = 0,
     budget: float | None = None,
+    page_seconds: Mapping[str, Mapping[str, float]] | None = None,
 ) -> TwoStageRouter:
-    """Fit both stages on ``train`` and choose ``(t1, t2)`` on ``val``.
+    """Fit the heads on ``train`` and choose ``(t1, t2)``, or ``(t1, t2, t3)`` when ``paths``
+    includes hybrid, on ``val``.
 
-    ``needs_layout`` maps each extractor name to whether it reads the page layout."""
+    ``needs_layout`` maps each extractor name to whether it reads the page layout; ``t3`` defaults
+    to `T3_QUANTILES` of the hybrid head's val outputs plus 1.01; ``budget`` (seconds, scenario
+    C) to always-vision's mean cost on ``val``."""
+    paths = tuple(dict.fromkeys(paths))
+    if not {"text", "vision"} <= set(paths) or not set(paths) <= set(ROUTER_PATHS):
+        raise ValueError(f"paths must include text and vision, from {ROUTER_PATHS}; got {paths}")
+    prefixes2 = tuple(f"{e}_" for e in stage2)
+    three_way = "hybrid" in paths
     router = TwoStageRouter(
         NeedsImage(tuple(f"{e}_" for e in stage1), seed).fit(train, features),
-        NeedsImage(tuple(f"{e}_" for e in stage2), seed).fit(train, features),
+        NeedsImage(prefixes2, seed).fit(train, features),
         tuple(stage1),
         tuple(stage2),
         any(needs_layout[e] for e in stage1),
         any(needs_layout[e] for e in (*stage1, *stage2)),
+        hybrid=NeedsImage(prefixes2, seed, target="hybrid").fit(train, features)
+        if three_way
+        else None,
+    )
+    cached = router.probabilities(val, features)
+    if three_way and t3 is None:
+        t3 = sorted({*(float(v) for v in np.quantile(list(cached[2].values()), T3_QUANTILES)), OFF})
+    settings = (
+        [(a, b, c) for a in t1 for b in t2 for c in t3]  # type: ignore[union-attr]
+        if three_way
+        else [(a, b) for a in t1 for b in t2]
     )
     router.grid = [
-        grid_point(val, router.policy(val, features, seconds, layout_s, (a, b)), (a, b))
-        for a in t1
-        for b in t2
+        grid_point(
+            val,
+            router.policy(
+                val,
+                features,
+                seconds,
+                layout_s,
+                ps,
+                probabilities=cached,
+                page_seconds=page_seconds,
+            ),
+            ps,
+        )
+        for ps in settings
     ]
     router.budget = vision_budget(val) if budget is None else budget
     best, router.met_budget = select_point(router.grid, router.budget)
     router.params = best.params  # type: ignore[assignment]
     return router
+
+
+MODEL_FILE = "model.joblib"
+"""A trained two-stage router inside its run folder (``runs/routers/<name>/``)."""
+
+
+def save_two_stage(router: TwoStageRouter, out_dir: Path, meta: Mapping[str, Any]) -> Path:
+    """Write the trained router (all heads, their TF-IDF vocabularies and the chosen thresholds)
+    with its run metadata, so the demo can route new questions without retraining."""
+    import joblib
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / MODEL_FILE
+    joblib.dump({"router": router, "meta": dict(meta)}, path)
+    return path
+
+
+def load_two_stage(path: Path) -> tuple[TwoStageRouter, dict[str, Any]]:
+    """The router and metadata written by `save_two_stage`; ``path`` is the file or its folder.
+
+    joblib files are pickles: load only routers this project trained (never a downloaded one)."""
+    import joblib
+
+    path = path / MODEL_FILE if path.is_dir() else path
+    saved = joblib.load(path)
+    if not isinstance(saved, dict) or not isinstance(saved.get("router"), TwoStageRouter):
+        raise ValueError(f"{path} is not a two-stage router written by qdu router two-stage")
+    return saved["router"], saved["meta"]

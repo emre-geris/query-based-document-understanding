@@ -434,11 +434,22 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     from qdu.layout import load_layout
     from qdu.provenance import file_sha256, run_metadata
     from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
-    from qdu.router.baselines import write_grid
+    from qdu.router.baselines import select_point, write_grid
     from qdu.router.train import write_choices
-    from qdu.router.two_stage import train_two_stage
+    from qdu.router.two_stage import MODEL_FILE, ROUTER_PATHS, save_two_stage, train_two_stage
 
     stage1, stage2 = _names(args.stage1), _names(args.stage2)
+    paths = _names(args.paths)
+    if not {"text", "vision"} <= set(paths) or not set(paths) <= set(ROUTER_PATHS):
+        print(f"--paths must include text and vision, from {list(ROUTER_PATHS)}", file=sys.stderr)
+        return 2
+    three_way = "hybrid" in paths
+    if args.budget not in ("vision", "hybrid", "none"):
+        try:
+            float(args.budget)
+        except ValueError:
+            print("--budget must be vision, hybrid, none or seconds", file=sys.stderr)
+            return 2
     unknown = [e for e in (*stage1, *stage2) if e not in EXTRACTORS]
     if unknown:
         print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
@@ -460,6 +471,15 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     layout = load_layout(args.layout) if any(needs_layout.values()) else None
     table = build_features(router_inputs(rows, ocr, layout), extractors)
     layout_s = {r.question_id: layout[r.doc_id].latency_s if layout else 0.0 for r in rows}
+    if args.budget in ("vision", "hybrid", "none"):
+        budget_name = f"always-{args.budget}" if args.budget != "none" else "none"
+        budget = {
+            "vision": None,
+            "hybrid": sum(r.cost_c["hybrid"] for r in val) / len(val),
+            "none": float("inf"),
+        }[args.budget]
+    else:
+        budget_name, budget = "fixed", float(args.budget)
     try:
         router = train_two_stage(
             train,
@@ -470,7 +490,10 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
             stage1=stage1,
             stage2=stage2,
             needs_layout=needs_layout,
+            paths=paths,
             seed=args.seed,
+            budget=budget,
+            page_seconds=table.page_seconds,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -478,43 +501,122 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
 
     name = args.name
     out = args.out_dir / name
-    print(f"Router {name}: stage 1 {','.join(stage1)} (no OCR), stage 2 {','.join(stage2)}")
-    print(f"Validation grid (C cost budget = always-vision {router.budget:.3f} s):")
-    print(f"  {'t1':>6}{'t2':>6}{'score':>8}{'C s':>8}   text/vision/hybrid")
-    for g in router.grid:
-        mark = "  <- chosen" if g.params == router.params else ""
+    labels = ("t1", "t2", "t3") if three_way else ("t1", "t2")
+    print(
+        f"Router {name}: paths {'/'.join(paths)}; stage 1 {','.join(stage1)} (no OCR), "
+        f"stage 2 {','.join(stage2)}" + (" + hybrid head" if three_way else "")
+    )
+    print(f"Validation grid (C cost budget = {budget_name} {router.budget:.3f} s):")
+    head = "".join(f"{k:>6}" for k in labels)
+    print(f"  {head}{'score':>8}{'C s':>8}   text/vision/hybrid")
+
+    def show(g, mark=""):
+        values = "".join(f"{v:>6.2f}" for v in g.params)
         shares = "/".join(f"{g.shares[p]:.2f}" for p in ("text", "vision", "hybrid"))
-        print(
-            f"  {g.params[0]:>6.2f}{g.params[1]:>6.2f}{g.score * 100:>8.1f}{g.cost:>8.3f}"
-            f"   {shares}{mark}"
-        )
+        print(f"  {values}{g.score * 100:>8.1f}{g.cost:>8.3f}   {shares}{mark}")
+
+    if three_way:  # hundreds of settings: the best within budget per t3 (full grid in the CSV)
+        for t3 in sorted({g.params[2] for g in router.grid}):
+            pool = [g for g in router.grid if g.params[2] == t3]
+            best, within = select_point(pool, router.budget)
+            mark = "  <- chosen" if best.params == router.params else ""
+            show(best, mark + ("" if within else "  (over budget)"))
+    else:
+        for g in router.grid:
+            show(g, "  <- chosen" if g.params == router.params else "")
     if not router.met_budget:
         print("  No setting stays within the budget: the most accurate one is kept.")
 
-    policy = router.policy(target, table.features, table.seconds, layout_s, name=name)
+    policy = router.policy(
+        target, table.features, table.seconds, layout_s, name=name, page_seconds=table.page_seconds
+    )
     choices = out / (f"{name}.csv" if args.split == "val" else f"{name}-test.csv")
     write_choices(policy, target, choices)
-    write_grid(router.grid, ("t1", "t2"), out / "val_grid.csv")
+    write_grid(router.grid, labels, out / "val_grid.csv")
     stage2_share = sum(policy.uses_ocr.values()) / len(target)
+    shares = {p: sum(c == p for c in policy.choice.values()) / len(target) for p in ROUTER_PATHS}
     meta = run_metadata(
         router=name,
+        paths=list(paths),
         stage1=stage1,
         stage2=stage2,
-        t1=router.params[0],
-        t2=router.params[1],
+        **dict(zip(labels, router.params, strict=True)),
+        shares=shares,
         met_budget=router.met_budget,
-        budget_c_s=router.budget,
+        budget=budget_name,
+        budget_c_s=router.budget if router.budget != float("inf") else None,
         seed=args.seed,
         labels=str(args.labels),
         labels_sha256=file_sha256(args.labels),
     )
+    meta["model"] = MODEL_FILE
     (out / "router.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    model_path = save_two_stage(router, out, meta)
+    chosen = ", ".join(f"{k} = {v}" for k, v in zip(labels, router.params, strict=True))
+    split_shares = ", ".join(f"{p} {v:.0%}" for p, v in shares.items())
     print(
-        f"\nt1 = {router.params[0]}, t2 = {router.params[1]}; {stage2_share:.0%} of "
-        f"{args.split} questions reach stage 2 (pay OCR); wrote {choices}"
+        f"\n{chosen}; {stage2_share:.0%} of {args.split} questions reach stage 2 (pay OCR); "
+        f"chosen paths: {split_shares}; wrote {choices} and {model_path}"
     )
     print(f"Evaluate: uv run qdu router evaluate --split {args.split} --choices {choices}")
     return 0
+
+
+def cmd_router_embed(args: argparse.Namespace) -> int:
+    import time
+
+    from qdu.data import ImageStore, read_manifest
+    from qdu.router.embed import (
+        PAGE_MODEL,
+        QUESTION_MODEL,
+        compress_pages,
+        compress_questions,
+        device_hardware,
+        embed_pages,
+        embed_questions,
+        load_encoder,
+        load_page_embeddings,
+    )
+
+    try:
+        clip = load_encoder(PAGE_MODEL, args.device)
+        minilm = load_encoder(QUESTION_MODEL, args.device)
+    except ImportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    records = read_manifest(args.manifest)
+    pages = len({r.doc_id for r in records})
+    hardware = device_hardware(args.device)
+    work_pages = args.work_dir / "clip_pages.jsonl"
+    work_questions = args.work_dir / "question_embeddings.jsonl"
+    print(f"S6 {PAGE_MODEL} on {hardware}: {pages} pages -> {work_pages}")
+    start, done = time.perf_counter(), 0
+
+    def on_page(page) -> None:
+        nonlocal done
+        done += 1
+        if done % 200 == 0:
+            elapsed = time.perf_counter() - start
+            print(
+                f"  {done:>5} pages, last {page.latency_s * 1000:.0f} ms  [{elapsed / 60:.1f} min]"
+            )
+
+    n = embed_pages(
+        records,
+        ImageStore().get,
+        clip,
+        work_pages,
+        model=PAGE_MODEL,
+        hardware=hardware,
+        on_page=on_page,
+    )
+    total_pages = compress_pages(work_pages, args.pages_out)
+    print(f"{n} pages embedded now; {total_pages} pages -> {args.pages_out}")
+    print(f"S5 {QUESTION_MODEL} + CLIP text: {len(records)} questions -> {work_questions}")
+    m = embed_questions(records, load_page_embeddings(work_pages), minilm, clip, work_questions)
+    total_questions = compress_questions(work_questions, args.questions_out)
+    print(f"{m} questions embedded now; {total_questions} questions -> {args.questions_out}")
+    return 0 if (total_pages, total_questions) == (pages, len(records)) else 1
 
 
 def cmd_router_ablation(args: argparse.Namespace) -> int:
@@ -585,6 +687,11 @@ def cmd_router_learned_cascade(args: argparse.Namespace) -> int:
     unknown = [e for e in signals if e not in EXTRACTORS]
     if unknown:
         print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
+        return 2
+    if "s6" in signals:  # its page-level CLIP time is not charged by the cascade's cost
+        print(
+            "learned-cascade does not support s6 (page-level cost); use two-stage", file=sys.stderr
+        )
         return 2
     extractors = [EXTRACTORS[e]() for e in signals]
     train = read_labels(args.labels, splits=["train"])
@@ -746,6 +853,152 @@ def cmd_layout_detect(args: argparse.Namespace) -> int:
     return 0 if total == pages else 1
 
 
+def build_demo_service(args: argparse.Namespace):
+    """The demo's router, OCR, layout and model from command-line options (``qdu demo``).
+
+    Example pages use the run's stored OCR and layout; other pages get the live OCR engine and
+    layout detector, built only when first needed. ``--model replay`` answers example questions
+    with the labelled run's recorded outputs and other questions with the fake model."""
+    from qdu.demo import DemoService, SharedOcr, StoredLayout, StoredOcr, demo_fake_model
+    from qdu.layout import load_layout
+    from qdu.models import create_model
+    from qdu.router import load_ocr
+    from qdu.router.live import LiveRouter, live_extractors
+    from qdu.router.two_stage import load_two_stage
+
+    router, meta = load_two_stage(args.router)
+    names = {*router.stage1_extractors, *router.stage2_extractors}
+    question_encoder = clip_encoder = None
+    if names & {"s5", "s6"}:
+        from qdu.router.embed import PAGE_MODEL, QUESTION_MODEL, load_encoder
+
+        question_encoder = load_encoder(QUESTION_MODEL) if "s5" in names else None
+        clip_encoder = load_encoder(PAGE_MODEL) if "s6" in names else None
+    extractors = live_extractors(question_encoder, clip_encoder)
+
+    def live_layout():
+        from qdu.layout import PaddleLayout
+
+        return PaddleLayout(args.layout_model)
+
+    stored = args.run / "ocr.jsonl.gz", args.run / "layout.jsonl.gz"
+    ocr = SharedOcr(
+        StoredOcr(
+            load_ocr(stored[0]) if stored[0].exists() else {}, lambda: _ocr(args.ocr, 3, None)
+        )
+    )
+    layout = StoredLayout(load_layout(stored[1]) if stored[1].exists() else {}, live_layout)
+    model = demo_fake_model() if args.model in ("fake", "replay") else create_model(args.model)
+    return DemoService(LiveRouter(router, extractors, ocr, layout), model, ocr), meta
+
+
+def cmd_demo_ask(args: argparse.Namespace) -> int:
+    from PIL import Image
+
+    from qdu.data import ImageStore
+    from qdu.demo import describe, load_examples, load_recorded
+
+    if bool(args.image) == bool(args.example):
+        print("give either --image with --question, or --example", file=sys.stderr)
+        return 2
+    if args.image and not args.question:
+        print("--image needs at least one --question", file=sys.stderr)
+        return 2
+    try:
+        service, meta = build_demo_service(args)
+    except (ImportError, RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"Router {meta.get('router', args.router)} ({'/'.join(meta.get('paths', []))}), "
+        f"model {args.model}, OCR {args.ocr} (stored for example pages)"
+    )
+    if args.model == "replay":
+        print(
+            "Note: example questions show the labelled run's recorded answers (real); other "
+            "questions get fake-model answers, whose answers and times mean nothing."
+        )
+    elif args.model == "fake":
+        print("Note: fake-model answers and times mean nothing; never report them.")
+    if args.example:
+        examples = {e.question_id: e for e in load_examples(args.run, args.manifest)}
+        unknown = [q for q in args.example if q not in examples]
+        if unknown:
+            print(f"not val questions of the label table: {unknown}", file=sys.stderr)
+            return 2
+        recorded = load_recorded(args.example, args.run) if args.model == "replay" else {}
+        store = ImageStore()
+        for qid in args.example:
+            e = examples[qid]
+            page = store.get(e.record).convert("RGB")
+            answer = service.ask(
+                e.record.question, page, e.doc_id, args.mode, args.compare,
+                answers=e.record.answers, dataset=e.dataset, recorded=recorded.get(qid),
+            )  # fmt: skip
+            print(f"\n[{qid}, page {e.doc_id}, needs: {e.kind}]")
+            print(describe(answer))
+        return 0
+    with Image.open(args.image) as image:
+        page = image.convert("RGB")
+    for question in args.question:
+        answer = service.ask(question, page, args.image.stem, args.mode, args.compare)
+        print()
+        print(describe(answer))
+    return 0
+
+
+def cmd_demo_serve(args: argparse.Namespace) -> int:
+    from qdu.data import ImageStore
+    from qdu.demo import load_examples, load_recorded, showcase
+    from qdu.demo.session import DemoSession
+    from qdu.demo.web import create_app, serve
+
+    try:
+        service, meta = build_demo_service(args)
+        pages = showcase(load_examples(args.run, args.manifest), per_dataset=args.per_dataset)
+    except (ImportError, RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    ids = [e.question_id for page in pages for e in page]
+    recorded = load_recorded(ids, args.run) if args.model == "replay" else {}
+    store = ImageStore()
+    model = {
+        "replay": "örnek sorular: GPU koşusunun kayıtlı cevapları; diğer sorular: deneme modeli",
+        "fake": "deneme modeli (cevaplar anlamsız)",
+    }.get(args.model, args.model)
+    status = (
+        f"Yönlendirici: {meta.get('router', args.router)} "
+        f"({'/'.join(meta.get('paths', []))}) · Model: {model}"
+    )
+    session = DemoSession(service, pages, lambda e: store.get(e.record).convert("RGB"), recorded)
+    try:
+        app = create_app(session, status)
+    except ImportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"{len(pages)} example pages; {status}")
+    serve(app, host=args.host, port=args.port)
+    return 0
+
+
+def cmd_demo_examples(args: argparse.Namespace) -> int:
+    from qdu.demo import load_examples, showcase
+
+    pages = showcase(load_examples(args.run, args.manifest), per_dataset=args.per_dataset)
+    print(f"{len(pages)} val pages whose questions need text / vision / hybrid:")
+    for page in pages:
+        print(f"\n{page[0].doc_id}  ({page[0].dataset})")
+        for e in page:
+            s = e.label.score
+            print(
+                f"  {e.kind:<12} {e.question_id:<24} {e.record.question}\n"
+                f"  {'':<12} gold: {' | '.join(e.record.answers)}   "
+                f"score text {s['text']:.2f} vision {s['vision']:.2f} hybrid {s['hybrid']:.2f}"
+            )
+    print("\nTry one: uv run qdu demo ask --compare --example <question id>")
+    return 0
+
+
 def _add_ocr_options(parser: argparse.ArgumentParser) -> None:
     from qdu.ocr import OCR_SPECS
 
@@ -753,6 +1006,32 @@ def _add_ocr_options(parser: argparse.ArgumentParser) -> None:
         "--ocr", choices=OCR_SPECS, default="tesseract", help="OCR engine for text/hybrid"
     )
     parser.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
+
+
+def _add_demo_options(parser: argparse.ArgumentParser) -> None:
+    from qdu.demo.service import MODES
+    from qdu.ocr import OCR_SPECS
+
+    parser.add_argument(
+        "--router",
+        type=Path,
+        default=Path("runs/routers/two-stage-s5"),
+        help="folder of a router saved by qdu router two-stage",
+    )
+    parser.add_argument(
+        "--model",
+        default="replay",
+        help="replay (example pages: the labelled run's answers; others: fake), fake, or "
+        "openai:<model> for the vLLM server",
+    )
+    parser.add_argument("--run", type=Path, default=Path("results/full-qwen3.5-4b"))
+    parser.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
+    parser.add_argument(
+        "--ocr", choices=OCR_SPECS, default="rapid-mobile", help="OCR engine (CPU by default)"
+    )
+    parser.add_argument("--layout-model", default="PP-DocLayout-M")
+    parser.add_argument("--mode", choices=MODES, default="auto", help="auto: the router chooses")
+    parser.add_argument("--compare", action="store_true", help="also run the other two paths")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -796,6 +1075,30 @@ def build_parser() -> argparse.ArgumentParser:
     warm.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
     warm.add_argument("--ocr-cache", type=Path, default=benchmark.DEFAULT_OCR_CACHE)
     warm.set_defaults(func=cmd_ocr_warm)
+
+    demo = sub.add_parser("demo", help="the demo: route, answer and cost one question")
+    demo_sub = demo.add_subparsers(dest="demo_command", required=True)
+    ask = demo_sub.add_parser(
+        "ask", help="route and answer questions about one page image, printing every cost"
+    )
+    ask.add_argument("--image", type=Path, help="a page image of your own")
+    ask.add_argument("--question", action="append", help="repeat for several questions")
+    ask.add_argument(
+        "--example", action="append", help="a val question id instead (repeatable); see examples"
+    )
+    _add_demo_options(ask)
+    ask.set_defaults(func=cmd_demo_ask)
+    sv = demo_sub.add_parser("serve", help="open the demo in the browser (needs the demo extra)")
+    _add_demo_options(sv)
+    sv.add_argument("--per-dataset", type=int, default=1, help="example pages per dataset")
+    sv.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to reach it from other machines")
+    sv.add_argument("--port", type=int, default=7860)
+    sv.set_defaults(func=cmd_demo_serve)
+    ex = demo_sub.add_parser("examples", help="val pages whose questions need different paths")
+    ex.add_argument("--per-dataset", type=int, default=2)
+    ex.add_argument("--run", type=Path, default=Path("results/full-qwen3.5-4b"))
+    ex.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
+    ex.set_defaults(func=cmd_demo_examples)
 
     layout = sub.add_parser("layout", help="layout regions per page (PP-DocLayout)")
     layout_sub = layout.add_subparsers(dest="layout_command", required=True)
@@ -938,11 +1241,23 @@ def build_parser() -> argparse.ArgumentParser:
     bl.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     bl.set_defaults(func=cmd_router_baseline)
     ts = router_sub.add_parser(
-        "two-stage", help="OCR-free stage 1, OCR signals only for uncertain questions"
+        "two-stage",
+        help="three-way router: OCR-free stage 1, OCR signals and a hybrid head only when unsure",
     )
     ts.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
     ts.add_argument("--stage1", default="s1,s3", help="OCR-free signals for stage 1")
     ts.add_argument("--stage2", default="s1,s2,s3,s4", help="signals for stage 2 (after OCR)")
+    ts.add_argument(
+        "--paths",
+        default="text,vision,hybrid",
+        help="paths the router may choose; 'text,vision' reproduces the earlier two-way router",
+    )
+    ts.add_argument(
+        "--budget",
+        default="vision",
+        help="val C-cost budget for the thresholds: vision (default, the success baseline), "
+        "hybrid, none, or seconds",
+    )
     ts.add_argument(
         "--split", choices=("val", "test"), default="val", help="split to write choices for"
     )
@@ -952,6 +1267,23 @@ def build_parser() -> argparse.ArgumentParser:
     ts.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     ts.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
     ts.set_defaults(func=cmd_router_two_stage)
+    em = router_sub.add_parser(
+        "embed",
+        help="S5/S6 signals: CLIP page and MiniLM question embeddings (resumable; needs the "
+        "'embed' extra and the page images)",
+    )
+    em.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
+    em.add_argument("--device", default="cpu", help="cpu, or cuda to time on the GPU")
+    em.add_argument("--work-dir", type=Path, default=Path("runs/embed"))
+    em.add_argument(
+        "--pages-out", type=Path, default=Path("results/full-qwen3.5-4b/clip_pages.jsonl.gz")
+    )
+    em.add_argument(
+        "--questions-out",
+        type=Path,
+        default=Path("results/full-qwen3.5-4b/question_embeddings.jsonl.gz"),
+    )
+    em.set_defaults(func=cmd_router_embed)
     ab = router_sub.add_parser(
         "ablation", help="what each signal group adds: AUC and learned-router result on val"
     )

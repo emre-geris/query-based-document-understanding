@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QDU Doküman Asistanı</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --ink: #1A1A19; --ink2: #3A3A36; --muted: #55554F; --line: #DADAD3; --line2: #E3E3DC;
+  --bg: #F6F6F3; --side: #EDEDE8; --chip: #F0F0EB; --white: #FFFFFF;
+  --text: #0F766E; --text-bg: #E3F3F0; --vision: #1D4ED8; --vision-bg: #E8EEFC;
+  --hybrid: #9A4A07; --hybrid-bg: #FCEEDF;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink);
+  font-family: Inter, system-ui, sans-serif; color-scheme: light; }
+button { font-family: inherit; }
+.app { display: flex; flex-wrap: wrap; align-items: stretch; min-height: 100vh; }
+body.present .app { zoom: 1.2; }
+
+/* sidebar */
+nav { flex: 1 1 240px; max-width: 280px; background: var(--side); border-right: 1px solid var(--line);
+  padding: 20px 16px; display: flex; flex-direction: column; gap: 20px; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo { width: 32px; height: 32px; border-radius: 8px; background: var(--ink); color: var(--bg);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+.brand b { display: block; font-size: 15px; }
+.brand span { font-size: 12px; color: var(--muted); }
+.btn-dark { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px;
+  border-radius: 10px; background: var(--ink); color: #fff; border: none; font-weight: 500;
+  font-size: 14px; cursor: pointer; width: 100%; }
+.btn-light { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px;
+  border-radius: 10px; background: var(--white); color: var(--ink); border: 1px solid var(--line);
+  font-weight: 500; font-size: 14px; cursor: pointer; width: 100%; }
+.sect { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .04em; padding: 0 6px 6px; }
+.doc { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 8px;
+  background: transparent; border: none; text-align: left; cursor: pointer; color: var(--ink);
+  width: 100%; }
+.doc:hover { background: #E4E4DE; }
+.doc.on { background: var(--white); }
+.doc b { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc span { font-size: 12px; color: var(--muted); }
+.status { margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding: 12px;
+  border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 12px;
+  color: var(--muted); line-height: 1.45; }
+.status b { color: var(--ink); font-size: 13px; display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #B45309; flex: none; }
+
+/* main */
+main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; }
+header { display: flex; flex-direction: column; gap: 6px; padding: 16px 32px;
+  border-bottom: 1px solid var(--line); }
+header h1 { margin: 0; font-size: 17px; font-weight: 600; }
+header p { margin: 0; font-size: 13px; color: var(--muted); }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { font-size: 12px; font-weight: 500; border-radius: 999px; padding: 6px 12px; }
+.pill.green { color: #134E4A; background: var(--text-bg); }
+.pill.orange { color: #8A3B06; background: #FDF0E3; }
+.chips-q { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.qchip { font-size: 13px; border: 1px solid var(--line); background: var(--white); color: var(--ink2);
+  border-radius: 999px; padding: 6px 12px; cursor: pointer; text-align: left; }
+.qchip:hover { border-color: var(--ink); }
+.thread { flex: 1 1 auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 26px;
+  max-width: 900px; width: 100%; margin: 0 auto; }
+.turn { display: flex; flex-direction: column; gap: 14px; }
+.user { display: flex; justify-content: flex-end; gap: 12px; align-items: flex-end; }
+.user img { width: 92px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+.user p { margin: 0; max-width: 560px; background: var(--ink); color: #fff; padding: 12px 16px;
+  border-radius: 16px 16px 4px 16px; font-size: 15px; line-height: 1.5; }
+.bot { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column;
+  gap: 12px; padding: 16px 18px; border-radius: 4px 16px 16px 16px; background: var(--white);
+  border: 1px solid var(--line); max-width: 660px; }
+.bot.on { border: 2px solid var(--ink); }
+.bot:focus-visible { outline: 3px solid #93B4F5; }
+.bot .ans { font-size: 16px; line-height: 1.5; font-weight: 500; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.badge { font-size: 13px; font-weight: 600; border-radius: 999px; padding: 4px 10px; }
+.b-text { color: var(--text); background: var(--text-bg); }
+.b-vision { color: var(--vision); background: var(--vision-bg); }
+.b-hybrid { color: var(--hybrid); background: var(--hybrid-bg); }
+.chip { font-size: 13px; color: var(--ink2); background: var(--chip); border-radius: 999px;
+  padding: 4px 10px; font-family: var(--mono); }
+.ok { color: #0F5F58; background: var(--text-bg); }
+.part { color: #8A3B06; background: var(--hybrid-bg); }
+.bad { color: #9F1239; background: #FDE8EC; }
+.why { font-size: 13px; color: var(--muted); }
+.thinking { color: var(--muted); font-size: 14px; padding: 8px 2px; }
+
+/* story */
+.story { background: var(--ink); color: #fff; border-radius: 16px; padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 10px; }
+.story .top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.story .n { font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #D6D6CF; }
+.story .t { font-size: 20px; font-weight: 600; line-height: 1.35; }
+.story p { margin: 0; font-size: 15px; line-height: 1.5; color: #E9E9E4; }
+.nav-btn { min-height: 44px; padding: 0 16px; border-radius: 10px; font-size: 14px; font-weight: 600;
+  cursor: pointer; border: 1px solid #fff; background: #fff; color: var(--ink); }
+.nav-btn:disabled { border-color: #55554F; background: transparent; color: #A8A8A0; cursor: default; }
+
+/* empty */
+.empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 48px 32px; gap: 32px; }
+.empty h2 { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -.01em; text-align: center; }
+.empty .lead { margin: 0; font-size: 16px; line-height: 1.55; color: var(--ink2); text-align: center; max-width: 640px; }
+.drop { width: 100%; max-width: 720px; border: 2px dashed #A8A8A0; border-radius: 18px; background: var(--white);
+  padding: 36px 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; text-align: center; }
+.drop b { font-size: 16px; }
+.drop span { font-size: 13px; color: var(--muted); }
+.cards3 { width: 100%; max-width: 720px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.excard { min-height: 44px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--white);
+  text-align: left; font-size: 13px; line-height: 1.45; color: var(--ink); cursor: pointer;
+  display: flex; flex-direction: column; gap: 4px; }
+.excard:hover { border-color: var(--ink); }
+.pathcard { border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; }
+
+/* composer */
+form.composer { position: sticky; bottom: 0; background: linear-gradient(#F6F6F300, var(--bg) 30%); padding: 16px 32px 22px; }
+.box { max-width: 900px; margin: 0 auto; background: var(--white); border: 1px solid #CFCFC8; border-radius: 16px;
+  padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+textarea { border: none; resize: none; font-family: inherit; font-size: 15px; line-height: 1.5; padding: 6px 8px;
+  outline: none; color: var(--ink); background: transparent; }
+.tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.icon-btn { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink); }
+.send { border: none; background: var(--ink); color: #fff; }
+.send:disabled { background: #A8A8A0; cursor: default; }
+.seg { display: flex; gap: 2px; background: var(--chip); border-radius: 10px; padding: 3px; }
+.seg button { min-height: 38px; padding: 0 12px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px;
+  font-weight: 500; background: transparent; color: var(--ink); }
+.seg button.on { background: #fff; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink2); min-height: 44px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--ink); }
+.note { max-width: 900px; margin: 8px auto 0; font-size: 12px; color: var(--muted); }
+.error { max-width: 900px; margin: 0 auto 10px; background: #FDE8EC; color: #9F1239; border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+
+/* analysis */
+aside { flex: 1 1 340px; max-width: 430px; background: var(--white); border-left: 1px solid var(--line);
+  padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.a-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.kicker { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.a-top h2 { margin: 4px 0 0; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.present-btn { flex: none; display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+  border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 600; border: 1px solid #CFCFC8;
+  background: #fff; color: var(--ink); }
+.present-btn.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.card { border: 1px solid var(--line2); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.stat { display: flex; flex-direction: column; gap: 6px; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-size: 18px; font-weight: 600; font-family: var(--mono); }
+.stat .badge { align-self: flex-start; }
+.verdict { display: flex; flex-direction: column; gap: 4px; border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.45; }
+.verdict b { font-size: 13px; }
+.v-ok { background: var(--text-bg); color: #134E4A; }
+.v-warn { background: var(--hybrid-bg); color: #6B3005; }
+.small { font-size: 12px; color: var(--ink2); display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.small strong { color: var(--ink); font-weight: 600; }
+details { border-top: 1px solid var(--line2); padding-top: 4px; }
+summary { min-height: 44px; display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary .st { font-size: 14px; font-weight: 600; flex: 1; }
+summary .ss { font-size: 12px; color: var(--muted); }
+summary .chev { font-size: 14px; color: var(--muted); transition: transform .15s; }
+details[open] summary .chev { transform: rotate(180deg); }
+.dbody { padding: 6px 0 12px; display: flex; flex-direction: column; gap: 10px; }
+.step { display: flex; gap: 12px; }
+.step .rail { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.step .num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; background: var(--chip); }
+.step .line { flex: 1; width: 2px; background: var(--line2); min-height: 12px; }
+.step .body { display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; flex: 1; min-width: 0; }
+.step .body b { font-size: 13px; }
+.step .body span { font-size: 13px; color: var(--ink2); line-height: 1.45; }
+.meter { position: relative; height: 8px; background: var(--chip); border-radius: 4px; }
+.meter .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.meter .mark { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #B45309; }
+.mono { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.stack { display: flex; height: 14px; border-radius: 4px; overflow: hidden; gap: 2px; }
+.legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; }
+.legend div { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.legend span { color: var(--ink2); flex: 1; }
+.legend em { font-style: normal; font-family: var(--mono); }
+.tablebox { overflow-x: auto; border: 1px solid var(--line2); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 10px; text-align: left; border-top: 1px solid var(--line2); }
+thead th { background: var(--bg); border-top: none; font-weight: 600; }
+.num-c { text-align: right; font-family: var(--mono); }
+.ocr { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ink2); font-family: var(--mono);
+  white-space: pre-wrap; background: var(--bg); border-radius: 8px; padding: 10px; max-height: 320px; overflow: auto; }
+.mutedp { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 0; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav aria-label="Sayfalar">
+    <div class="brand"><div class="logo" aria-hidden="true">QDU</div>
+      <div><b>Doküman Asistanı</b><span>metin · görüntü · hibrit yönlendirici</span></div></div>
+    <button class="btn-dark" type="button" id="newChat">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Yeni sohbet</button>
+    <div>
+      <div class="sect">Örnek sayfalar (val)</div>
+      <div id="docs"></div>
+    </div>
+    <button class="btn-light" type="button" id="uploadSide">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+      Kendi sayfanı yükle</button>
+    <div class="status" id="status"></div>
+  </nav>
+
+  <main>
+    <header id="header"></header>
+    <div id="error" style="padding:10px 32px 0"></div>
+    <div id="body" style="flex:1;display:flex;flex-direction:column"></div>
+    <form class="composer" id="composer" aria-label="Soru sor">
+      <div class="box">
+        <label for="q" class="hidden">Sorunuz</label>
+        <textarea id="q" rows="2" placeholder="Bu sayfa hakkında bir soru sorun…"></textarea>
+        <div class="tools">
+          <div class="row">
+            <button type="button" class="icon-btn" id="attach" aria-label="Sayfa yükle">
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-8.5 8.5a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg>
+            </button>
+            <div class="seg" role="radiogroup" aria-label="Cevap yolu" id="modes"></div>
+            <label class="check"><input type="checkbox" id="compare" checked> Üç yolu karşılaştır</label>
+          </div>
+          <button type="submit" class="icon-btn send" id="send" aria-label="Gönder">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      <p class="note" id="modeNote"></p>
+    </form>
+    <input type="file" id="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+  </main>
+
+  <aside aria-label="Seçilen cevabın analizi" id="aside"></aside>
+</div>
+
+<script>
+"use strict";
+const MODES = [["auto", "Otomatik"], ["text", "Metin"], ["vision", "Görüntü"], ["hybrid", "Hibrit"]];
+const TIMING_COLOR = { ocr: "#0F766E", layout: "#7BA9A2", page: "#B9B9B0", router: "#8A8A82", model: "#1D4ED8" };
+const PATH_COLOR = { text: "#0F766E", vision: "#1D4ED8", hybrid: "#9A4A07" };
+let V = null;            // the server's view of the session
+let mode = "auto";
+let busy = false;
+const opened = {};       // which analysis sections the user opened
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sec = (x) => `${Number(x).toFixed(2).replace(".", ",")} s`;
+const num = (x, d = 2) => Number(x).toFixed(d).replace(".", ",");
+const tok = (n) => Number(n).toLocaleString("tr-TR");
+const badge = (a) => `<span class="badge b-${a.path}">${esc(a.label)}</span>`;
+const scoreClass = (s) => (s >= 1 ? "ok" : s > 0 ? "part" : "bad");
+
+async function call(url, body, isForm) {
+  if (busy) return;
+  busy = true; render();
+  try {
+    const opt = { method: body === undefined ? "GET" : "POST" };
+    if (isForm) opt.body = body;
+    else if (body !== undefined) { opt.headers = { "Content-Type": "application/json" }; opt.body = JSON.stringify(body); }
+    const r = await fetch(url, opt);
+    V = await r.json();
+  } catch (e) {
+    V = { ...(V || {}), error: "Sunucuya ulaşılamadı: " + e };
+  } finally { busy = false; render(); }
+}
+
+function renderNav() {
+  const cur = V.page && V.page.id;
+  $("docs").innerHTML = V.examples.map((e, i) =>
+    `<button type="button" class="doc${cur === e.doc_id ? " on" : ""}" data-ex="${i}">
+       <b>${esc(e.dataset)} · ${esc(e.doc_id.split("/").slice(1).join("/"))}</b>
+       <span>${e.questions} örnek soru</span></button>`).join("");
+  $("status").innerHTML = `<b><span class="dot" aria-hidden="true"></span>Demo modu</b><span>${esc(V.status)}</span>`;
+}
+
+function renderHeader() {
+  const p = V.page;
+  if (!p) { $("header").innerHTML = `<h1>Yeni sohbet</h1><p>Bir örnek sayfa seçin ya da kendi sayfanızı yükleyin.</p>`; return; }
+  const pills = [];
+  if (p.example) pills.push(`<span class="pill green">Örnek sayfa (val) · doğru cevaplar biliniyor</span>`);
+  if (p.recorded) pills.push(`<span class="pill orange">Cevaplar: GPU koşusunun kayıtları</span>`);
+  const qs = V.questions.length
+    ? `<div class="chips-q">${V.questions.map((q, i) => `<button type="button" class="qchip" data-q="${i}">${esc(q)}</button>`).join("")}</div>` : "";
+  $("header").innerHTML = `<h1>${esc(p.name)}</h1><p>${esc(p.info)}</p><div class="pills">${pills.join("")}</div>${qs}`;
+}
+
+function storyHtml() {
+  const s = V.story;
+  if (!s) return "";
+  return `<section class="story" aria-live="polite"><div class="top"><span class="n">Sunum · adım ${s.n} / ${s.of}</span>
+    <div class="row"><button type="button" class="nav-btn" id="prev" ${V.can_prev ? "" : "disabled"}>← Önceki</button>
+    <button type="button" class="nav-btn" id="next" ${V.at_last ? "disabled" : ""}>Sonraki adım →</button></div></div>
+    <span class="t">${esc(s.title)}</span><p>${esc(s.text)}</p></section>`;
+}
+
+function emptyHtml() {
+  const ex = V.examples.slice(0, 3).map((e, i) =>
+    `<button type="button" class="excard" data-ex="${i}"><b>${esc(e.dataset)}</b><span style="color:var(--ink2)">${esc(e.doc_id)} · ${e.questions} örnek soru</span></button>`).join("");
+  return `<div class="empty">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+      <h2>Bir belge sayfası yükleyin, sorunuzu sorun</h2>
+      <p class="lead">Yönlendirici her soru için en uygun yolu seçer; cevabın yanında neden o yolu seçtiğini, ne kadar sürdüğünü ve kaç token harcadığını gösterir.</p></div>
+    <button type="button" class="drop" id="drop">
+      <svg aria-hidden="true" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#1A1A19" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6M9 14l3-3 3 3"/></svg>
+      <b>Sayfa resmini seçin</b><span>PNG veya JPG · metin okuma ve sayfa düzeni yüklemede bir kez yapılır · doğru cevap bilinmediği için puan gösterilmez</span></button>
+    <div style="width:100%;max-width:720px;display:flex;flex-direction:column;gap:10px">
+      <span style="font-size:13px;font-weight:600;color:var(--muted)">Örnek sayfayla dene (doğru cevaplar biliniyor)</span>
+      <div class="cards3">${ex}</div></div>
+    <div class="cards3">
+      <div class="pathcard" style="background:var(--text-bg)"><b style="color:var(--text);font-size:14px">Metin</b>Okunan metin + soru. En ucuz yol; cevap metinde açıkça yazıyorsa.</div>
+      <div class="pathcard" style="background:var(--vision-bg)"><b style="color:var(--vision);font-size:14px">Görüntü</b>Sayfa görüntüsü + soru. Grafik, şekil ve yerleşim soruları için.</div>
+      <div class="pathcard" style="background:var(--hybrid-bg)"><b style="color:var(--hybrid);font-size:14px">Hibrit</b>Görüntü + okunan metin. Yoğun tablolar ve hesap gerektiren sorular için.</div>
+    </div></div>`;
+}
+
+function threadHtml() {
+  const turns = V.answers.map((a, i) => {
+    const img = i === 0 ? `<img src="/api/page.png?p=${encodeURIComponent(V.page.id)}" alt="Sayfanın küçük önizlemesi">` : "";
+    const score = a.score === null ? "" : `<span class="badge ${scoreClass(a.score)}">${esc(a.verdict)} · ${esc(a.metric)} ${num(a.score)}</span>`;
+    const rec = a.recorded ? `<span class="why">kayıtlı cevap (GPU koşusu)</span>` : "";
+    return `<div class="turn"><div class="user">${img}<p>${esc(a.question)}</p></div>
+      <button type="button" class="bot${i === V.selected ? " on" : ""}" data-sel="${i}" aria-pressed="${i === V.selected}">
+        <span class="ans">${esc(a.answer) || "(boş cevap)"}</span>
+        <span class="row">${badge(a)}<span class="chip">${sec(a.total_c)}</span><span class="chip">${tok(a.tokens_in + a.tokens_out)} token</span>${score}<span class="why">${esc(a.why)}</span>${rec}</span>
+      </button></div>`;
+  }).join("");
+  const thinking = busy ? `<div class="thinking">Yönlendirici karar veriyor ve cevap hazırlanıyor…</div>` : "";
+  const hint = V.answers.length || busy ? "" : `<p class="thinking">Yukarıdaki örnek sorulardan birine tıklayın ya da kendi sorunuzu yazın.</p>`;
+  return `<div class="thread">${storyHtml()}${turns}${thinking}${hint}</div>`;
+}
+
+function stepsHtml(a) {
+  if (a.forced) return `<p class="mutedp">Yol elle seçildi; yönlendirici çalıştırılmadı.</p>`;
+  return a.steps.map((s, i) => {
+    const last = s.p === undefined;
+    const meter = last ? "" : `<div class="meter"><div class="fill" style="width:${Math.min(100, s.p / s.scale * 100)}%;background:${s.passed ? "#1A1A19" : "#A8A8A0"}"></div>
+        <div class="mark" style="left:${Math.min(100, s.t / s.scale * 100)}%"></div></div>
+      <span class="mono">${esc(s.name)} = ${num(s.p, s.scale < 1 ? 4 : 3)} · eşik ${num(s.t, s.scale < 1 ? 4 : 2)} · ${s.passed ? "geçti" : "geçmedi"}</span>`;
+    const dot = last ? `style="background:${PATH_COLOR[a.path]};color:#fff"` : "";
+    return `<div class="step"><div class="rail"><span class="num" ${dot}>${i + 1}</span><span class="line" aria-hidden="true"></span></div>
+      <div class="body"><b>${esc(s.title)}</b><span>${esc(s.text)}</span>${meter}</div></div>`;
+  }).join("") + (a.reused.length ? `<p class="mutedp">Bu sayfadaki önceki sorudan kullanıldı: ${a.reused.map((x) => x === "ocr" ? "metin okuma" : "sayfa düzeni").join(", ")}.</p>` : "");
+}
+
+function timingHtml(a) {
+  const parts = a.timing;
+  const bar = parts.filter((t) => t.value > 0).map((t) => `<div style="flex:${t.value} 0 0;background:${TIMING_COLOR[t.key]}"></div>`).join("");
+  const legend = parts.map((t) => `<div><i style="background:${TIMING_COLOR[t.key]}"></i><span>${esc(t.label)}</span><em>${t.value > 0 ? sec(t.value) : "—"}</em></div>`).join("");
+  const seg = [["C", "Soru başına (C)"], ["B", "Sayfa paylaşımlı (B)"]].map(([k, l]) =>
+    `<button type="button" role="radio" aria-checked="${V.scenario === k}" class="${V.scenario === k ? "on" : ""}" data-sc="${k}" style="flex:1">${l}</button>`).join("");
+  const note = V.scenario === "B"
+    ? `B: sayfa bir kez okunur; metin okuma ve sayfa düzeni süresi bu sayfadaki ${a.questions_on_page} soruya bölünür (belge arşivi senaryosu).`
+    : "C: her soru metin okuma ve sayfa düzeni süresini kendisi öder (projenin ana senaryosu). Token sayısı senaryo A'ya karşılık gelir.";
+  return `<div class="seg" role="radiogroup" aria-label="Maliyet senaryosu">${seg}</div>
+    <div class="stack" role="img" aria-label="Süre dökümü">${bar}</div><div class="legend">${legend}</div>
+    <p class="mutedp">${note}</p>`;
+}
+
+function compareHtml(a) {
+  if (!a.compare.length) return `<p class="mutedp">Karşılaştırma kapalı. Soru kutusundaki “Üç yolu karşılaştır” seçiliyken her soru üç yolla da cevaplanır.</p>`;
+  const rows = a.compare.map((c) => `<tr style="background:${c.chosen ? `var(--${c.path}-bg)` : "#fff"}">
+      <th scope="row" style="color:${PATH_COLOR[c.path]}">${esc(c.label)}${c.chosen ? " (seçilen)" : ""}</th>
+      <td>${esc(c.answer)}</td><td class="num-c">${c.score === null ? "—" : num(c.score)}</td>
+      <td class="num-c">${sec(c.time)}</td><td class="num-c">${tok(c.tokens)}</td></tr>`).join("");
+  return `<div class="tablebox"><table><thead><tr><th scope="col">Yol</th><th scope="col">Cevap</th><th scope="col" class="num-c">Puan</th><th scope="col" class="num-c">Süre</th><th scope="col" class="num-c">Token</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="mutedp">Her yol tek başına kullanılsaydı (senaryo C). Karşılaştırma üç yolu da çalıştırır (yaklaşık 3 kat maliyet); gerçek kullanımda kapalıdır.</p>`;
+}
+
+function details(key, title, sub, body) {
+  const open = V.present || opened[key];
+  return `<details data-key="${key}" ${open ? "open" : ""}><summary><span class="st">${title}</span><span class="ss">${esc(sub)}</span><span class="chev" aria-hidden="true">▾</span></summary><div class="dbody">${body}</div></details>`;
+}
+
+function renderAside() {
+  const a = V.selected === null || V.selected === undefined ? null : V.answers[V.selected];
+  const presentBtn = `<button type="button" class="present-btn${V.present ? " on" : ""}" id="presentBtn" aria-pressed="${V.present}">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+      ${V.present ? "Sunumdan çık" : "Sunum modu"}</button>`;
+  if (!a) {
+    $("aside").innerHTML = `<div class="a-top"><div><span class="kicker">Analiz</span><h2>Henüz bir cevap yok</h2></div>${presentBtn}</div>
+      <p class="mutedp">Bir cevaba tıklayınca yönlendiricinin kararı, süre dökümü ve üç yolun karşılaştırması burada görünür. “Sunum modu” bir örnek sayfanın üç sorusunu adım adım gösterir.</p>`;
+    return;
+  }
+  let verdict = "";
+  if (a.best) {
+    verdict = a.best === a.path
+      ? `<div class="verdict v-ok"><b>En ucuz doğru yol seçildi</b>Bu soruda en ucuz doğru yol ${esc(a.best_label.toLocaleLowerCase("tr-TR"))} yoluydu.</div>`
+      : `<div class="verdict v-warn"><b>Daha iyi bir yol vardı</b>Yönlendirici ${esc(a.label.toLocaleLowerCase("tr-TR"))} yolunu seçti; en ucuz doğru yol ${esc(a.best_label.toLocaleLowerCase("tr-TR"))} yoluydu (${sec(a.best_cost)}).</div>`;
+  }
+  const score = a.score === null ? `<span class="v">—</span>` : `<span class="v" style="font-size:15px;color:${a.score >= 1 ? "#0F5F58" : a.score > 0 ? "#8A3B06" : "#9F1239"}">${esc(a.verdict)} · ${num(a.score)}</span>`;
+  const vs = a.vs_vision === null ? "" : `<span>Hep görüntüye göre: <strong>${sec(Math.abs(a.vs_vision))} ${a.vs_vision >= 0 ? "daha hızlı" : "daha yavaş"}</strong></span>`;
+  const gold = a.gold.length ? `<span>Doğru cevap: <strong>${esc(a.gold.join(" | "))}</strong></span>` : "";
+  const stage = a.forced ? "elle seçildi" : `${a.stage}. aşamada karar`;
+  $("aside").innerHTML = `<div class="a-top"><div><span class="kicker">Analiz</span><h2>${esc(a.question)}</h2></div>${presentBtn}</div>
+    <section class="card" aria-label="Özet"><div class="grid3">
+      <div class="stat"><span class="k">Seçilen yol</span>${badge(a)}</div>
+      <div class="stat"><span class="k">Toplam süre (${V.scenario})</span><span class="v">${sec(a.total)}</span></div>
+      <div class="stat"><span class="k">Puan${a.metric ? ` (${esc(a.metric)})` : ""}</span>${score}</div></div>
+      ${verdict}
+      <div class="small">${gold}<span>Token: <strong>${tok(a.tokens_in)} / ${a.tokens_out}</strong></span>${vs}</div></section>
+    ${details("steps", "Karar adımları", stage, stepsHtml(a))}
+    ${details("timing", "Süre dökümü", `senaryo ${V.scenario}`, timingHtml(a))}
+    ${details("compare", "Üç yolun karşılaştırması", a.compare.length ? "açık" : "kapalı", compareHtml(a))}
+    ${details("ocr", "Sayfadan okunan metin (OCR)", "", a.ocr_text ? `<pre class="ocr">${esc(a.ocr_text)}</pre>` : `<p class="mutedp">Bu soru için sayfanın metni okunmadı.</p>`)}`;
+}
+
+function renderComposer() {
+  $("modes").innerHTML = MODES.map(([k, l]) => `<button type="button" role="radio" aria-checked="${mode === k}" class="${mode === k ? "on" : ""}" data-mode="${k}">${l}</button>`).join("");
+  $("modeNote").textContent = mode === "auto"
+    ? "Otomatik: yönlendirici her soru için metin, görüntü veya hibrit yolunu kendisi seçer."
+    : `Elle seçim: yönlendirici devre dışı, her soru ${MODES.find((m) => m[0] === mode)[1].toLocaleLowerCase("tr-TR")} yoluna gider (karşılaştırma için).`;
+  $("send").disabled = busy || !V.page;
+  $("error").innerHTML = V.error ? `<div class="error" role="alert">${esc(V.error)}</div>` : "";
+}
+
+function render() {
+  if (!V) return;
+  document.body.classList.toggle("present", !!V.present);
+  renderNav(); renderHeader(); renderAside(); renderComposer();
+  $("body").innerHTML = V.page ? threadHtml() : emptyHtml();
+  $("composer").classList.toggle("hidden", !V.page || !!V.present);  // the presenter steps, nobody types
+}
+
+// events (delegated, since the markup is redrawn)
+document.addEventListener("click", (ev) => {
+  const t = ev.target.closest("[data-ex],[data-q],[data-sel],[data-sc],[data-mode],#prev,#next,#presentBtn,#drop,#attach,#uploadSide,#newChat");
+  if (!t || busy) return;
+  if (t.dataset.ex !== undefined) call("/api/example", { index: +t.dataset.ex });
+  else if (t.dataset.q !== undefined) { $("q").value = V.questions[+t.dataset.q]; $("q").focus(); }
+  else if (t.dataset.sel !== undefined) call("/api/select", { index: +t.dataset.sel });
+  else if (t.dataset.sc) call("/api/scenario", { scenario: t.dataset.sc });
+  else if (t.dataset.mode) { mode = t.dataset.mode; renderComposer(); }
+  else if (t.id === "prev") call("/api/prev", {});
+  else if (t.id === "next") call("/api/next", {});
+  else if (t.id === "presentBtn") {
+    if (V.present) call("/api/stop", {});
+    else {
+      const i = V.page ? V.examples.findIndex((e) => e.doc_id === V.page.id) : -1;
+      call("/api/present", { index: i >= 0 ? i : 0 });
+    }
+  }
+  else if (t.id === "drop" || t.id === "attach" || t.id === "uploadSide") $("file").click();
+  else if (t.id === "newChat") call("/api/reset", {});
+});
+document.addEventListener("toggle", (ev) => {
+  const d = ev.target;
+  if (d.tagName === "DETAILS" && !V.present) opened[d.dataset.key] = d.open;
+}, true);
+$("file").addEventListener("change", () => {
+  const f = $("file").files[0];
+  if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  $("file").value = "";
+  call("/api/upload", fd, true);
+});
+$("composer").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const q = $("q").value.trim();
+  if (!q || busy) return;
+  const modeName = MODES.find((m) => m[0] === mode)[0];
+  call("/api/ask", { question: q, mode: modeName, compare: $("compare").checked }).then(() => { if (!V.error) $("q").value = ""; });
+});
+$("q").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("composer").requestSubmit(); }
+});
+call("/api/state");
+</script>
+</body>
+</html>

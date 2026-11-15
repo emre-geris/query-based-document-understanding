@@ -6,6 +6,12 @@ uses it (scenario C), and its time per question is measured, since the decision 
 under 50 ms. Loading the image is not timed (the path that answers decodes it anyway), nor is
 the OCR, whose time is charged separately from the label table.
 
+An extractor that reads precomputed values (the embedding signals S5/S6, `qdu.router.embed`)
+also has a ``cost(item) -> (question_s, page_s)`` method: the time measured when the values
+were made. ``question_s`` is added to its measured time per question; ``page_s`` is page-level
+time (like layout), kept in `FeatureTable.page_seconds` and shared by a page's questions in
+scenario B.
+
 The project's signals S1-S4 are in `qdu.router.signals`.
 """
 
@@ -91,19 +97,28 @@ class FeatureTable:
     """question id -> extractor name -> time it took."""
     needs_ocr: bool
     needs_layout: bool = False
+    page_seconds: dict[str, dict[str, float]] = field(default_factory=dict)
+    """question id -> extractor name -> page-level time it charges (e.g. a page embedding)."""
+
+    def page_time(self, question_id: str, extractors: Iterable[str] | None = None) -> float:
+        """Page-level signal time of ``extractors`` (all if None) for the question's page."""
+        times = self.page_seconds.get(question_id, {})
+        return sum(t for e, t in times.items() if extractors is None or e in extractors)
 
     def router_cost(
         self, layout: Mapping[str, PageLayout] | None = None, doc_of: Mapping[str, str] = {}
     ) -> dict[str, dict]:
         """What a router built on these features pays per question, as ``uses_ocr``,
         ``page_s`` and ``question_s`` for `qdu.router.Policy` / `route`: OCR if any extractor
-        read it, the page's layout time if any used layout, and the extractors' own time."""
+        read it, the page's layout time if any used layout plus page-level signal time, and
+        the extractors' own time."""
         if self.needs_layout and (layout is None or not doc_of):
             raise ValueError("layout signals: pass the layout and each question's doc_id")
         return {
             "uses_ocr": dict.fromkeys(self.features, self.needs_ocr),
             "page_s": {
-                q: layout[doc_of[q]].latency_s if self.needs_layout else 0.0  # type: ignore[index]
+                q: (layout[doc_of[q]].latency_s if self.needs_layout else 0.0)  # type: ignore[index]
+                + self.page_time(q)
                 for q in self.features
             },
             "question_s": {q: sum(t.values()) for q, t in self.seconds.items()},
@@ -112,16 +127,26 @@ class FeatureTable:
     def write(self, path: Path) -> None:
         names = sorted({k for f in self.features.values() for k in f})
         extractors = sorted({k for s in self.seconds.values() for k in s})
+        paged = sorted({k for s in self.page_seconds.values() for k in s})
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", newline="", encoding="utf-8") as f:
             w = csv.writer(f, lineterminator="\n")
-            w.writerow(["question_id", *names, *(f"time_s_{e}" for e in extractors)])
+            w.writerow(
+                [
+                    "question_id",
+                    *names,
+                    *(f"time_s_{e}" for e in extractors),
+                    *(f"page_time_s_{e}" for e in paged),
+                ]
+            )
             for qid in sorted(self.features):
+                on_page = self.page_seconds.get(qid, {})
                 w.writerow(
                     [
                         qid,
                         *(self.features[qid].get(n, "") for n in names),
                         *(f"{self.seconds[qid][e]:.6f}" for e in extractors),
+                        *(f"{on_page.get(e, 0.0):.6f}" for e in paged),
                     ]
                 )
 
@@ -132,6 +157,7 @@ def build_features(
     """Run every extractor on every item; feature names get the extractor's prefix."""
     features: dict[str, dict[str, float]] = {}
     seconds: dict[str, dict[str, float]] = {}
+    page_seconds: dict[str, dict[str, float]] = {}
     needs_ocr = any(e.needs_ocr for e in extractors)
     needs_layout = any(getattr(e, "needs_layout", False) for e in extractors)
     for item in items:
@@ -141,11 +167,19 @@ def build_features(
             raise ValueError(f"{item.question_id}: an extractor needs layout but none was given")
         row: dict[str, float] = {}
         times: dict[str, float] = {}
+        page_times: dict[str, float] = {}
         for e in extractors:
             start = time.perf_counter()
             values = e(item)
             times[e.name] = time.perf_counter() - start
+            if hasattr(e, "cost"):  # precomputed values: charge the time measured back then
+                question_s, page_s = e.cost(item)
+                times[e.name] += question_s
+                if page_s:
+                    page_times[e.name] = page_s
             row.update({f"{e.name}_{k}": float(v) for k, v in values.items()})
         features[item.question_id] = row
         seconds[item.question_id] = times
-    return FeatureTable(features, seconds, needs_ocr, needs_layout)
+        if page_times:
+            page_seconds[item.question_id] = page_times
+    return FeatureTable(features, seconds, needs_ocr, needs_layout, page_seconds)

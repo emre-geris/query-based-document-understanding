@@ -161,6 +161,46 @@ for result in evaluate(val, [policy]):
 - **Router cost**: `features.router_cost(layout, doc_of)` gives `uses_ocr`, `page_s` (layout
   time) and `question_s` (extractor time) for `route` or a choices CSV. A two-stage router
   passes OCR and layout only for the questions that reached stage 2.
+- **Three-way two-stage router** (`qdu router two-stage`): stage 1 (OCR-free) sends to vision;
+  stage 2 (after OCR) has a hybrid head (P(hybrid > vision) ≥ t3 → hybrid), then the text/vision
+  head. `--paths text,vision` is the earlier two-way router; `--budget vision|hybrid|none|<s>`
+  is the val C budget the thresholds must respect (default always-vision). The full grid is in
+  `runs/routers/<name>/val_grid.csv`. The trained router is saved as `runs/routers/<name>/model.joblib`
+  (`save_two_stage` / `load_two_stage`, heads, TF-IDF vocabularies and thresholds plus the
+  run metadata), so the demo routes new questions without retraining; `runs/` is not committed,
+  so retrain it with the same command on a new machine.
+- **Live routing** (`qdu.router.live.LiveRouter`, for the demo): routes one new question on a
+  new page with a saved router, computing only the signals each stage needs: layout and the
+  OCR-free signals first, OCR only if stage 1 does not decide. It returns a `LiveDecision`
+  with the path, the stage, each head's probability and the time of every step, and keeps
+  layout and OCR per page so later questions on the page reuse them. S5/S6 are embedded on
+  the spot (`live_extractors`). The path rule is `TwoStageRouter.choose`, shared with the
+  evaluation, so the demo decides exactly as the evaluated router does.
+- **Demo service** (`qdu.demo.DemoService`): routes with `LiveRouter`, answers with the chosen
+  path (or all three with `compare`), and adds up the cost as the evaluation does: scenario C
+  (OCR and layout in full), B (page work divided by the questions asked about the page so
+  far) and A (tokens). OCR runs once per page (`SharedOcr`), shared by the router and the
+  text/hybrid paths. Try it without a GPU (fake model; needs the `embed`, `paddle` and `rapid`
+  extras for S5, layout and CPU OCR):
+  `uv run qdu demo ask --image page.png --question "..." --compare`.
+- **Demo examples** (`qdu.demo.examples`): val pages only (test stays untouched). `qdu demo
+  examples` lists pages whose questions need text, vision and only-hybrid respectively;
+  `qdu demo ask --example <id> --compare` routes one with the run's stored OCR and layout (so
+  the choice equals the evaluation's) and, with the default `--model replay`, shows the
+  labelled run's recorded answers, times and tokens, scored against the gold answers. No GPU
+  and no OCR or layout install is needed for examples.
+- **Demo interface** (`qdu demo serve`, optional `demo` extra: FastAPI + uvicorn): the design
+  draft as a web page (`qdu/demo/static/index.html`, plain HTML and JavaScript, light theme)
+  served by `qdu.demo.web`, which keeps one `DemoSession` and answers each button with its state
+  as JSON (`session_view`). The presentation narrative is generated from each answer
+  (`render.step_story`), so it never claims more than the result. Gradio was tried first and
+  dropped: it could not follow the design.
+- **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
+  (optional `embed` extra, page images) into two gzips next to the run; the extractors only
+  read them. Their measured time is charged through `cost(item) -> (question_s, page_s)`:
+  per-question time is added to the extractor's time, per-page time goes to
+  `FeatureTable.page_seconds` (like layout). `learned-cascade` rejects `s6`, since it does not
+  charge page-level signal time.
 - **Cascade baseline**: `qdu.router.cascade` (`read_confidence`, `cascade`, `sweep`); choose
   its threshold on `val` like λ. It is weak: on val it never reaches always-vision (78.4 vs
   88.0 points at equal C cost; `results/full-text-logprobs-qwen3.5-4b/README.md`).

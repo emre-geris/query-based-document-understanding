@@ -1,5 +1,6 @@
 """Query router: label table, signals, decision rule and evaluation against the baselines."""
 
+from qdu.router.embed import PageEmbeddingSignals, QuestionEmbeddingSignals
 from qdu.router.evaluate import BASELINE, Policy, baselines, evaluate, read_policy
 from qdu.router.features import FeatureExtractor, RouterInput, build_features, router_inputs
 from qdu.router.labels import PATHS, LabelRow, build_labels, read_labels, write_labels
@@ -13,6 +14,8 @@ EXTRACTORS: dict[str, type] = {
     "s2": OcrSignals,
     "s3": PageSignals,
     "s4": EvidenceSignals,
+    "s5": QuestionEmbeddingSignals,  # precomputed by `qdu router embed`
+    "s6": PageEmbeddingSignals,
 }
 
 __all__ = [
@@ -24,8 +27,10 @@ __all__ = [
     "FeatureExtractor",
     "LabelRow",
     "OcrSignals",
+    "PageEmbeddingSignals",
     "PageSignals",
     "Policy",
+    "QuestionEmbeddingSignals",
     "QuestionSignals",
     "RouterInput",
     "baselines",
