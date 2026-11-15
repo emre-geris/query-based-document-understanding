@@ -21,7 +21,7 @@ that router training and evaluation (Phases 3–5) start from.
 Files: `predictions.jsonl` (one row per call, failed calls included; the latest successful row
 per question and path counts), reports with oracle ties broken by latency (this folder) and by
 tokens (`cost-tokens/`), and `labels.csv` (`qdu router labels`): one row per question with its
-router split, every path's score and C / B / A cost, and both oracle labels, the starting
+router split (scheme v2: TAT-DQA split by annual report; train 7,426 / val 2,558 / test 2,321), every path's score and C / B / A cost, and both oracle labels, the starting
 point for router training (`docs/router.md`), and `ocr.jsonl.gz` (`qdu router pack-ocr`): the
 OCR of all 3,586 pages as the run used it (text, lines with confidence and box, page size, time),
 checked against every row's OCR time and character count, and `layout.jsonl.gz`
@@ -49,16 +49,17 @@ among the page's questions.
 OCR time per page (mean): ChartQA 0.23 s, DocVQA 0.77 s, InfographicVQA 0.92 s, TAT-DQA
 1.10 s.
 
-Differences to always-vision, with 95% CIs from a paired bootstrap that resamples documents
-(1,000 resamples, seed 0; `qdu router evaluate --split all`):
+Differences to always-vision, with 95% CIs from a paired bootstrap that resamples documents,
+TAT-DQA pages by annual report (1,000 resamples, seed 0;
+`qdu router evaluate --split all --baseline always-vision`):
 
 | | Oracle − vision | Hybrid − vision | Text − vision |
 |---|---|---|---|
-| All (3,586 docs) | +4.2 [+3.9, +4.6] | −0.1 [−0.5, +0.3] | −22.6 [−23.7, −21.6] |
+| All (3,421 units) | +4.2 [+3.9, +4.6] | −0.1 [−0.5, +0.3] | −22.6 [−23.8, −21.5] |
 | DocVQA | +2.2 [+1.8, +2.6] | −0.2 [−0.6, +0.2] | −16.8 [−18.2, −15.5] |
 | InfographicVQA | +6.0 [+5.1, +6.9] | −0.3 [−1.3, +0.7] | −31.2 [−33.7, −28.7] |
 | ChartQA | +3.6 [+2.9, +4.4] | −1.2 [−2.0, −0.2] | −40.6 [−42.7, −38.5] |
-| TAT-DQA | +8.9 [+7.7, +10.2] | +2.2 [+0.9, +3.6] | +0.6 [−1.1, +2.5] |
+| TAT-DQA (126 reports) | +8.9 [+7.6, +10.2] | +2.2 [+1.0, +3.6] | +0.6 [−1.0, +2.6] |
 
 ## Findings
 
@@ -74,7 +75,9 @@ Differences to always-vision, with 95% CIs from a paired bootstrap that resample
 3. **TAT-DQA behaves differently.** It is the only dataset where hybrid beats vision
    (+2.2 [+0.9, +3.6]) and text is as good as vision; its oracle headroom (+8.9) is the
    largest. Its questions need exact figures from dense financial tables, where OCR text helps.
-   TAT-DQA is the unseen-data test set, so the router never trains on it.
+   It was the unseen-data test set until 15 Nov 2026; since then it is split by annual
+   report like the other datasets (split scheme v2), so the router can learn where hybrid
+   helps, and the unseen-data test is leave one dataset out (`docs/router.md`).
 4. **Text fails on charts and infographics.** Without the image, text loses 31–41 points on
    InfographicVQA and ChartQA, where layout and graphics carry the answer.
 5. **74 answers hit the 64-token limit** (hybrid 38, vision 19, text 17), 0.2% of calls;

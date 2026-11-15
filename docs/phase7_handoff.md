@@ -9,6 +9,17 @@ analyses whose code is in the appendix.
 The project lead (Emre) decides; deviations from this plan go to CLAUDE.md *Decisions* with the
 reason and the date. Keep the test split untouched until the final evaluation (step 6).
 
+> **Update, 15 Nov 2026 (read before the rest).** Two decisions change the frame below
+> (CLAUDE.md, *Decisions*): (1) the **primary baseline is always-hybrid** and success is the
+> pre-presentation criterion, ≥ 25% lower C cost with ≤ 1 point loss (`qdu router two-stage`
+> defaults to `--budget hybrid:0.75`, `qdu router evaluate` to `--baseline always-hybrid`);
+> always-vision is still reported next to it; (2) **TAT-DQA is split by annual report like the
+> other datasets** (split scheme v2, `labels.csv` regenerated), and the unseen-data test is
+> leave one dataset out (`qdu router lodo`). Val therefore has 2,558 questions and its numbers
+> differ from the tables below, which are kept as the 14 Nov record (scheme v1). Direction C is
+> delivered: the three-way router meets the criterion on val (CLAUDE.md, Phase 7 C). Directions
+> A and B remain.
+
 ---
 
 ## 0. Why Phase 7 exists (read this first)
@@ -247,8 +258,8 @@ rerun floor) at clearly fewer tokens, or B2 reaches always-vision's score at low
 
 4. Retrain the three-way router with every path that passed its gate and S5/S6; choose all
    thresholds / λ on val only.
-5. Run `qdu router evaluate --split test` once, then the TAT-DQA unseen-data test (TAT-DQA is in
-   the test split only). Write the success-criteria table (CLAUDE.md Phase 5): against
+5. Run `qdu router evaluate --split test` once, then the unseen-data test
+   `qdu router lodo --on test` (leave one dataset out; scheme v2). Write the success-criteria table (CLAUDE.md Phase 5): against
    always-hybrid (the pre-presentation's criterion) and against always-vision (the stricter one),
    in scenarios C, B and A.
 

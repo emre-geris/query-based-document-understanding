@@ -41,7 +41,7 @@ signals; `qdu layout detect` re-creates the layout file from them (needs `uv syn
 | Column | Meaning |
 |---|---|
 | `question_id`, `doc_id`, `dataset`, `stratum`, `question` | ids are dataset-prefixed (`docvqa/1012`); `doc_id` is the page |
-| `split` | router split, fixed per document: train 6,353, val 2,174, test 3,778 (incl. all 1,655 TAT-DQA) |
+| `split` | router split, fixed per document (scheme v2, below): train 7,426, val 2,558, test 2,321 |
 | `questions_on_page`, `ocr_s` | questions asked about this page; the page's OCR time on the L4 |
 | `score_<path>` | the dataset's primary metric for that path's answer (ANLS / relaxed accuracy / F1), 0–1 |
 | `model_s_<path>` | model latency, seconds |
@@ -59,8 +59,12 @@ Cost scenarios (CLAUDE.md, *Decisions*):
 ## 3. Rules
 
 1. **Splits.** Fit on `train`. Choose features, models and λ on `val`. Run `test` **once**, at
-   the end, for the reported numbers. TAT-DQA is test-only: the router never trains or tunes on
-   it. Splits are by document, so never re-split by question.
+   the end, for the reported numbers. Splits are by document, so never re-split by question.
+   Scheme v2 (default since 15 Nov 2026) splits TAT-DQA 60/20/20 like the other datasets,
+   **grouped by annual report** (its 277 documents come from 126 reports;
+   `benchmarks/tatdqa_reports.csv`); until then TAT-DQA was test-only (scheme v1,
+   `qdu router labels --split-scheme v1` reproduces that table). The unseen-data test is now
+   *leave one dataset out* (§4).
 2. **Inputs.** A router sees the question, the page image and its OCR (`RouterInput`), never
    the gold answer, a path's answer or score. Do not use the dataset name as a feature: a
    deployed router does not know it (an ablation may show its effect, labelled as such).
@@ -68,9 +72,15 @@ Cost scenarios (CLAUDE.md, *Decisions*):
    pays OCR even when the router then picks vision. Layout time is page-level, decision time
    per question. Declare these in the choices file (§4); the evaluation adds them. The
    decision itself must stay under 50 ms per question (`time_s_<extractor>` in the feature table).
-4. **Success** means beating **always-vision**: higher score at equal or lower cost, in
-   scenario C, with the 95% CI of the score difference above 0. Report B and A next to it.
-5. **Confidence intervals** resample documents (`qdu.evaluation.bootstrap`), never questions.
+4. **Success** (Decided, Emre, 15 Nov 2026; the October pre-presentation's criterion): against
+   **always-hybrid**, the primary baseline (a document-QA system that sends both the OCR text
+   and the page), the router costs **at least 25% less in scenario C** and loses **at most 1
+   point** (the lower end of the score CI above −1). `qdu router two-stage` therefore chooses
+   its thresholds within `--budget hybrid:0.75` by default. **Always-vision is reported next to
+   it in every table** (`--baseline always-vision`): on our data it is as accurate as hybrid
+   and cheaper, and a reader will ask. Report B and A too.
+5. **Confidence intervals** resample documents (`qdu.evaluation.bootstrap`), never questions;
+   TAT-DQA pages resample by annual report (`qdu router evaluate` does this itself).
 6. **Reproducibility.** Fix seeds; commit what produces a reported number; never edit
    `labels.csv`, manifests or predictions by hand (regenerate with `qdu`).
 
@@ -93,17 +103,23 @@ uv run qdu router evaluate --split val --choices runs/my_router.csv [--out runs/
 
 It prints, per dataset and overall, the score (primary metric × 100) and C/B/A costs of
 always-text, always-vision, always-hybrid, the oracle and each router, with paired-bootstrap
-95% CIs against always-vision for the score and the C cost. Validation baselines:
+95% CIs against always-hybrid (default; `--baseline always-vision` for the other table) for
+the score and the C cost. Validation baselines (scheme v2, incl. 384 TAT-DQA questions):
 
-| val (2,174 q) | score | C s | B s | tokens | score − vision |
-|---|---|---|---|---|---|
-| always-text | 62.2 | 0.98 | 0.46 | 559 | −25.9 [−28.3, −23.4] |
-| always-vision | 88.0 | 1.44 | 1.44 | 2,999 | – |
-| always-hybrid | 87.2 | 2.23 | 1.71 | 3,503 | −0.8 [−1.6, −0.0] |
-| oracle | 91.5 | 1.08 | 0.84 | 1,573 | +3.5 [+2.8, +4.3] |
+| val (2,558 q) | score | C s | B s | tokens | score − hybrid | score − vision |
+|---|---|---|---|---|---|---|
+| always-text | 61.2 | 1.07 | 0.49 | 621 | −21.4 [−24.1, −19.1] | −21.9 [−24.6, −19.3] |
+| always-vision | 83.1 | 1.48 | 1.48 | 3,108 | +0.4 [−0.4, +1.3] | – |
+| always-hybrid | 82.6 | 2.34 | 1.77 | 3,673 | – | −0.4 [−1.3, +0.4] |
+| oracle | 87.4 | 1.16 | 0.86 | 1,618 | +4.8 [+4.0, +5.6] | +4.3 [+3.5, +5.2] |
 
-The oracle shows the room: +3.5 points at 25% lower C cost on validation. Only ~8% of
+The oracle shows the room: +4.8 points over always-hybrid at half its C cost. Only ~8% of
 questions have a single best path, so most of the gain is sending easy questions to text.
+
+**Unseen data: leave one dataset out.** `uv run qdu router lodo` fits the two-stage router on
+the other datasets' train questions, chooses its thresholds on their val questions (same
+budget rule) and scores each held-out dataset on its train + val questions, which it never
+saw (`--on test` for the final run). Results in `runs/lodo/lodo_dev.csv`.
 
 ## 5. Writing code
 
@@ -216,4 +232,5 @@ for result in evaluate(val, [policy]):
   val; two-stage router; baselines (EcoDoc-style rules, question-only TF-IDF + logistic
   regression; the cascade exists); ablations S1 → S1–S4; `qdu router train` with a versioned
   router artefact.
-- Phase 5: test-split evaluation, TAT-DQA as unseen data, the success-criteria table.
+- Phase 5: test-split evaluation (in-domain and `qdu router lodo --on test`), the
+  success-criteria table.
