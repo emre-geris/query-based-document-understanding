@@ -11,6 +11,7 @@ repo); later calls are local and memory-mapped.
 """
 
 import hashlib
+import threading
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
@@ -207,11 +208,13 @@ class ImageStore:
         self._datasets = dict(datasets or {})
         self._loader = loader
         self._rows: dict[str, dict[str, int]] = {}
+        self._lock = threading.Lock()  # a demo preloads in a thread while a click may load too
 
     def _dataset(self, name: str) -> "Dataset":
-        if name not in self._datasets:
-            self._datasets[name] = load_source(name, self._loader)
-        return self._datasets[name]
+        with self._lock:
+            if name not in self._datasets:
+                self._datasets[name] = load_source(name, self._loader)
+            return self._datasets[name]
 
     def get(self, record: QARecord) -> "Image":
         name = record.dataset or record.question_id.split("/", 1)[0]

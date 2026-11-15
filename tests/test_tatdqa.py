@@ -97,3 +97,35 @@ def test_tatdqa_records_are_test_only(tatdqa_files) -> None:
         next(r for r in records if r.question_id == "tatdqa/q1")
     )
     assert page1.size == image.size
+
+
+def test_built_dataset_is_cached_on_disk(tmp_path, monkeypatch) -> None:
+    import huggingface_hub
+    from datasets import Dataset
+
+    import qdu.data.tatdqa as tat
+
+    snapshot = tmp_path / "snapshots" / "abc123"
+    snapshot.mkdir(parents=True)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda r, f, **k: str(snapshot / f))
+    monkeypatch.setattr(tat, "built_cache_dir", lambda docs: tmp_path / f"built-{docs.parent.name}")
+    calls = []
+
+    def build(gold, docs):
+        calls.append(docs)
+        return Dataset.from_list([{"uid": "q1", "page": 1}]), {"questions": 1}
+
+    monkeypatch.setattr(tat, "build_tatdqa", build)
+    first = tat.load_tatdqa()
+    second = tat.load_tatdqa()
+    assert len(calls) == 1  # the second call reads the saved copy
+    assert first[0] == second[0] == {"uid": "q1", "page": 1}
+    assert (tmp_path / "built-abc123" / "dataset_info.json").exists()
+    assert not (tmp_path / "built-abc123.partial").exists()
+
+
+def test_cache_dir_names_snapshot_dpi_and_version() -> None:
+    from qdu.data.tatdqa import CACHE_VERSION, RENDER_DPI, built_cache_dir
+
+    name = built_cache_dir(Path("x/snapshots/abc123/tatdqa_docs_test.zip")).name
+    assert name == f"tatdqa-test-abc123-dpi{RENDER_DPI}-v{CACHE_VERSION}"

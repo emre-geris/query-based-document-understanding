@@ -1151,6 +1151,17 @@ def cmd_demo_serve(args: argparse.Namespace) -> int:
     }.get(args.model, args.model)
     status = f"Model: {model} · Yönlendirici: {meta.get('router', args.router)}"
     session = DemoSession(service, pages, lambda e: store.get(e.record).convert("RGB"), recorded)
+
+    def warm() -> None:  # load each example page's dataset before anyone clicks it
+        for page in pages:
+            try:
+                store.get(page[0].record)
+            except Exception as exc:  # the click will show the error; keep warming the rest
+                print(f"warning: could not preload {page[0].record.doc_id}: {exc}")
+
+    import threading
+
+    threading.Thread(target=warm, name="demo-warm", daemon=True).start()
     try:
         app = create_app(session, status)
     except ImportError as exc:

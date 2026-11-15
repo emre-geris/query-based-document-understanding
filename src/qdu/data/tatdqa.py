@@ -146,11 +146,37 @@ def gold_file() -> Path:
     return Path(hf_hub_download(HF_REPO, GOLD_FILE, repo_type="dataset"))
 
 
+CACHE_VERSION = 1
+"""Bump when :func:`iter_rows` changes what a row holds, so a stale built copy is not reused."""
+
+
+def built_cache_dir(docs_zip: Path) -> Path:
+    """Where the built dataset is kept: next to the HF cache, keyed by the downloaded snapshot
+    (its folder name is the dataset commit), the render DPI and :data:`CACHE_VERSION`."""
+    from huggingface_hub.constants import HF_HOME
+
+    snapshot = Path(docs_zip).parent.name
+    return Path(HF_HOME) / "qdu" / f"tatdqa-test-{snapshot}-dpi{RENDER_DPI}-v{CACHE_VERSION}"
+
+
 def load_tatdqa() -> "Dataset":
-    """Download the official files into the HF cache (first call) and build the dataset."""
+    """Download the official files into the HF cache (first call) and build the dataset.
+
+    Rendering every evidence page from its PDF takes ~20 s, so the built dataset is saved
+    once (:func:`built_cache_dir`) and later calls load it from disk."""
+    import shutil
+
+    from datasets import load_from_disk
     from huggingface_hub import hf_hub_download
 
     gold = hf_hub_download(HF_REPO, GOLD_FILE, repo_type="dataset")
     docs = hf_hub_download(HF_REPO, DOCS_FILE, repo_type="dataset")
+    cache = built_cache_dir(Path(docs))
+    if (cache / "dataset_info.json").exists():
+        return load_from_disk(str(cache))
     dataset, _ = build_tatdqa(Path(gold), Path(docs))
-    return dataset
+    partial = cache.with_name(cache.name + ".partial")
+    shutil.rmtree(partial, ignore_errors=True)
+    dataset.save_to_disk(str(partial))
+    partial.rename(cache)  # complete copies only: an interrupted save is never loaded
+    return load_from_disk(str(cache))
