@@ -19,7 +19,12 @@ if TYPE_CHECKING:
     from PIL.Image import Image
 
 MODE_OF = {"Otomatik": "auto", "Metin": "text", "Görüntü": "vision", "Hibrit": "hybrid"}
-DATASET_NAME = {"docvqa": "DocVQA", "infographicvqa": "InfographicVQA", "chartqa": "ChartQA"}
+DATASET_NAME = {
+    "docvqa": "DocVQA",
+    "infographicvqa": "InfographicVQA",
+    "chartqa": "ChartQA",
+    "tatdqa": "TAT-DQA",
+}
 
 
 @dataclass

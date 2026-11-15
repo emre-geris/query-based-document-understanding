@@ -141,6 +141,20 @@ def chat_html(answers: list[DemoAnswer], selected: int | None, present: bool = F
     return "".join(parts)
 
 
+SIGNAL_NAME = {
+    "s1": "soru",
+    "s3": "sayfa düzeni",
+    "s5": "soru anlamı",
+    "s6": "sayfa görüntüsünün özeti",
+}
+
+
+def stage1_inputs(signals: tuple[str, ...]) -> str:
+    """What stage 1 looked at, in words, from the router's stage-1 extractors."""
+    names = [SIGNAL_NAME.get(s, s) for s in signals]
+    return ", ".join(names) if names else "soru"
+
+
 def _decision_steps(a: DemoAnswer) -> str:
     d = a.decision
     if d is None:
@@ -148,7 +162,8 @@ def _decision_steps(a: DemoAnswer) -> str:
     t1, t2, t3 = d.thresholds
     passed = "geçti" if d.p_image_stage1 >= t1 else "geçmedi"
     items = [
-        f"<li><b>1. aşama, metin okumadan</b> (soru, sayfa düzeni, soru anlamı): görüntü gerekme "
+        f"<li><b>1. aşama, metin okumadan</b> ({stage1_inputs(d.stage1_signals)}): "
+        f"görüntü gerekme "
         f"olasılığı {num(d.p_image_stage1, 3)}, eşik {num(t1)} → {passed}.</li>"
     ]
     if d.stage == 1:

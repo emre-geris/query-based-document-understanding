@@ -1119,6 +1119,18 @@ def cmd_demo_ask(args: argparse.Namespace) -> int:
     return 0
 
 
+def _recorded_model(run: Path) -> str:
+    """Which model, GPU and OCR produced a run's recorded answers, from its run_info.json."""
+    try:
+        info = json.loads((run / "run_info.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "GPU koşusunun"
+    model = info.get("vision_model") or info.get("text_model") or "?"
+    gpu = ", ".join(g.get("name", "?") for g in info.get("gpu") or []) or "GPU"
+    ocr = info.get("ocr_engine", "")
+    return f"{model} ({gpu}{', OCR ' + ocr if ocr else ''})"
+
+
 def cmd_demo_serve(args: argparse.Namespace) -> int:
     from qdu.data import ImageStore
     from qdu.demo import load_examples, load_recorded, showcase
@@ -1135,7 +1147,8 @@ def cmd_demo_serve(args: argparse.Namespace) -> int:
     recorded = load_recorded(ids, args.run) if args.model == "replay" else {}
     store = ImageStore()
     model = {
-        "replay": "örnek sorular: GPU koşusunun kayıtlı cevapları; diğer sorular: deneme modeli",
+        "replay": f"örnek sorular: {_recorded_model(args.run)} kayıtlı cevapları; "
+        "diğer sorular: deneme modeli",
         "fake": "deneme modeli (cevaplar anlamsız)",
     }.get(args.model, args.model)
     status = (
@@ -1187,8 +1200,8 @@ def _add_demo_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--router",
         type=Path,
-        default=Path("runs/routers/two-stage-s5"),
-        help="folder of a router saved by qdu router two-stage",
+        default=Path("runs/routers/two-stage"),
+        help="folder of a router saved by qdu router two-stage (default: its default --name)",
     )
     parser.add_argument(
         "--model",

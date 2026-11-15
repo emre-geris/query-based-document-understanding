@@ -210,7 +210,11 @@ for result in evaluate(val, [policy]):
   served by `qdu.demo.web`, which keeps one `DemoSession` and answers each button with its state
   as JSON (`session_view`). The presentation narrative is generated from each answer
   (`render.step_story`), so it never claims more than the result. Gradio was tried first and
-  dropped: it could not follow the design.
+  dropped: it could not follow the design. To run it: `uv sync --extra demo`, train a router
+  (`uv run qdu router two-stage`, saved to `runs/routers/two-stage`, the demo's default), then
+  `uv run qdu demo serve` and open http://127.0.0.1:7860. Note for presenting ChartQA: its
+  relaxed accuracy gives numbers 5% tolerance, years included, so a wrong year (2019 for 2020)
+  is shown as correct.
 - **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
   (optional `embed` extra, page images) into two gzips next to the run; the extractors only
   read them. Their measured time is charged through `cost(item) -> (question_s, page_s)`:

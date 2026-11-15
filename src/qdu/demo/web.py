@@ -35,7 +35,8 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
         steps.append(
             {"title": "1. aşama · metin okumadan karar", "name": "p(görüntü gerekli)",
              "p": d.p_image_stage1, "t": t1, "passed": d.p_image_stage1 >= t1, "scale": 1.0,
-             "text": "Soru, sayfa düzeni ve sorunun anlamına bakıldı; sayfanın metni okunmadı."}
+             "text": f"Bakılan: {render.stage1_inputs(d.stage1_signals)}; "
+                     "sayfanın metni okunmadı."}
         )  # fmt: skip
         if d.stage == 2:
             if d.p_hybrid is not None and t3 < 1.01:

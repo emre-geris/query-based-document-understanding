@@ -111,6 +111,7 @@ header p { margin: 0; font-size: 13px; color: var(--muted); }
 .drop b { font-size: 16px; }
 .drop span { font-size: 13px; color: var(--muted); }
 .cards3 { width: 100%; max-width: 720px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.cards-ex { width: 100%; max-width: 720px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
 .excard { min-height: 44px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--white);
   text-align: left; font-size: 13px; line-height: 1.45; color: var(--ink); cursor: pointer;
   display: flex; flex-direction: column; gap: 4px; }
@@ -305,7 +306,7 @@ function storyHtml() {
 }
 
 function emptyHtml() {
-  const ex = V.examples.slice(0, 3).map((e, i) =>
+  const ex = V.examples.map((e, i) =>
     `<button type="button" class="excard" data-ex="${i}"><b>${esc(e.dataset)}</b><span style="color:var(--ink2)">${esc(e.doc_id)} · ${e.questions} örnek soru</span></button>`).join("");
   return `<div class="empty">
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
@@ -316,7 +317,7 @@ function emptyHtml() {
       <b>Sayfa resmini seçin</b><span>PNG veya JPG · metin okuma ve sayfa düzeni yüklemede bir kez yapılır · doğru cevap bilinmediği için puan gösterilmez</span></button>
     <div style="width:100%;max-width:720px;display:flex;flex-direction:column;gap:10px">
       <span style="font-size:13px;font-weight:600;color:var(--muted)">Örnek sayfayla dene (doğru cevaplar biliniyor)</span>
-      <div class="cards3">${ex}</div></div>
+      <div class="cards-ex">${ex}</div></div>
     <div class="cards3">
       <div class="pathcard" style="background:var(--text-bg)"><b style="color:var(--text);font-size:14px">Metin</b>Okunan metin + soru. En ucuz yol; cevap metinde açıkça yazıyorsa.</div>
       <div class="pathcard" style="background:var(--vision-bg)"><b style="color:var(--vision);font-size:14px">Görüntü</b>Sayfa görüntüsü + soru. Grafik, şekil ve yerleşim soruları için.</div>
