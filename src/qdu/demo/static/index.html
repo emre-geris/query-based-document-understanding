@@ -182,7 +182,8 @@ textarea { border: none; resize: none; font-family: inherit; font-size: 15px; li
 .verdict { display: flex; flex-direction: column; gap: 4px; border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.45; }
 .verdict b { font-size: 13px; }
 .v-ok { background: var(--text-bg); color: #134E4A; }
-.v-warn { background: var(--hybrid-bg); color: #6B3005; }
+.v-warn { background: #FDE8EC; color: #9F1239; }
+.v-info { background: var(--chip); color: var(--ink2); }
 .small { font-size: 12px; color: var(--ink2); display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .small strong { color: var(--ink); font-weight: 600; }
 details { border-top: 1px solid var(--line2); padding-top: 4px; }
@@ -421,12 +422,8 @@ function details(key, title, sub, body) {
 }
 
 function analysisHtml(a) {
-  let verdict = "";
-  if (a.best) {
-    verdict = a.best === a.path
-      ? `<div class="verdict v-ok"><b>En ucuz doğru yol seçildi</b></div>`
-      : `<div class="verdict v-warn"><b>Daha iyi bir yol vardı: ${esc(a.best_label.toLocaleLowerCase("tr-TR"))} (${sec(a.best_cost)})</b></div>`;
-  }
+  const tone = { optimal: "v-ok", costlier: "v-info", worse: "v-warn" }[a.quality];
+  const verdict = a.quality ? `<div class="verdict ${tone}"><b>${esc(a.quality_text)}</b></div>` : "";
   const gold = a.gold.length ? `<span>Doğru cevap: <strong>${esc(a.gold.join(" | "))}</strong></span>` : "";
   const metric = a.score === null ? "" : `<span>${esc(a.metric)}: <strong>${num(a.score)}</strong></span>`;
   const stage = a.forced ? "elle seçildi" : `${a.stage}. aşamada karar`;

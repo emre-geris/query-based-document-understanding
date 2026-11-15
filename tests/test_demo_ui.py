@@ -56,11 +56,27 @@ def test_story_when_the_router_is_wrong():
     a = answer("text", {"text": 0.0, "vision": 1.0, "hybrid": 1.0})
     _, text = render.step_story(a, 2, 3)
     assert "Cevap yanlış; görüntü ve hibrit yolu doğru bilirdi" in text
-    assert "Daha iyi bir yol vardı" in render.panel_html(a)
+    assert render.choice_quality(a) == "worse"
+    assert "Yanlış yol — görüntü yolu doğru cevap verdi" in render.panel_html(a)
     b = answer("vision", {"text": 0.0, "vision": 0.0, "hybrid": 1.0}, stage=1)
     _, text = render.step_story(b, 3, 3)
     assert "metni okumadan, 1. aşamada" in text
     assert "yalnızca görüntü ve metin birlikte" in text
+
+
+def test_a_correct_but_costlier_choice_is_not_called_wrong():
+    a = answer("vision", {"text": 1.0, "vision": 1.0, "hybrid": 1.0}, stage=1)
+    assert render.choice_quality(a) == "costlier"
+    _, text = render.choice_message(a)
+    assert text.startswith("Doğru — ama metin yolu da doğruydu ve daha ucuzdu")
+    assert render.choice_quality(answer("text", {"text": 1.0, "vision": 1.0, "hybrid": 1.0})) == (
+        "optimal"
+    )
+    partial = answer("text", {"text": 0.5, "vision": 1.0, "hybrid": 0.0})
+    assert render.choice_message(partial)[1].startswith("Yanlış yol — görüntü yolu daha iyi")
+    assert (
+        render.choice_quality(answer("text", {"text": 0.0, "vision": 0.0, "hybrid": 0.0})) is None
+    )
 
 
 def test_panel_sections_and_scenarios():

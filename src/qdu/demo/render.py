@@ -116,6 +116,35 @@ def cheapest_correct(a: DemoAnswer) -> str | None:
     return min(tied, key=lambda p: a.compare[p].cost_c_s)
 
 
+def choice_quality(a: DemoAnswer) -> str | None:
+    """How good the chosen path was, from the comparison: ``optimal`` (the cheapest of the
+    best-scoring paths), ``costlier`` (as good an answer as the best, but a cheaper path was
+    as good) or ``worse`` (another path answered better). None without a comparison or gold
+    answers, or when every path failed."""
+    best = cheapest_correct(a)
+    if best is None:
+        return None
+    if best == a.path:
+        return "optimal"
+    return "costlier" if (a.score or 0.0) >= (a.compare[best].score or 0.0) else "worse"
+
+
+def choice_message(a: DemoAnswer) -> tuple[str, str] | None:
+    """(quality, one-line message) for the answer's verdict box."""
+    quality = choice_quality(a)
+    if quality is None:
+        return None
+    best = cheapest_correct(a)
+    other = f"{LABEL[best].lower()} yolu"
+    cost = s(a.compare[best].cost_c_s)  # type: ignore[index]
+    if quality == "optimal":
+        return quality, "En ucuz doğru yol seçildi"
+    if quality == "costlier":
+        return quality, f"Doğru — ama {other} da doğruydu ve daha ucuzdu ({cost})"
+    better = "doğru cevap verdi" if not a.score else "daha iyi cevap verdi"
+    return quality, f"Yanlış yol — {other} {better} ({cost})"
+
+
 def chat_html(answers: list[DemoAnswer], selected: int | None, present: bool = False) -> str:
     if not answers:
         return (
@@ -264,20 +293,13 @@ def panel_html(a: DemoAnswer | None, scenario: str = "C", present: bool = False)
             '<div class="qdu"><p class="qdu-muted">Henüz analiz edilecek bir cevap yok.</p></div>'
         )
     opened = " open" if present else ""
-    best = cheapest_correct(a)
-    if best is None:
+    message = choice_message(a)
+    if message is None:
         box = ""
-    elif best == a.path:
-        box = (
-            '<div class="qdu-ok"><b>En ucuz doğru yol seçildi.</b><br>'
-            f"Bu soruda en ucuz doğru yol {LABEL[best].lower()} yoluydu.</div>"
-        )
     else:
-        box = (
-            f'<div class="qdu-warn"><b>Daha iyi bir yol vardı.</b><br>Yönlendirici '
-            f"{LABEL[a.path].lower()} yolunu seçti; en ucuz doğru yol {LABEL[best].lower()} "
-            f"yoluydu ({s(a.compare[best].cost_c_s)}).</div>"
-        )
+        quality, text = message
+        css = {"optimal": "qdu-ok", "costlier": "qdu-ok", "worse": "qdu-warn"}[quality]
+        box = f'<div class="{css}"><b>{text}</b></div>'
     vision = a.compare.get("vision")
     vs = ""
     if vision is not None:

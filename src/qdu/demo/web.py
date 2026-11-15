@@ -67,6 +67,7 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
         )
         steps.append({"title": f"Seçim: {render.LABEL[a.path]}", "text": ending})
     best = render.cheapest_correct(a)
+    message = render.choice_message(a)
     vision = a.compare.get("vision")
     return {
         "question": a.question,
@@ -86,6 +87,8 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
         "verdict": render.verdict_of(a.score) if a.score is not None else None,
         "gold": list(a.gold),
         "best": best,
+        "quality": message[0] if message else None,
+        "quality_text": message[1] if message else None,
         "best_label": render.LABEL[best] if best else None,
         "best_cost": a.compare[best].cost_c_s if best else None,
         "vs_vision": (vision.cost_c_s - a.total_c_s) if vision else None,
