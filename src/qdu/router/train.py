@@ -9,7 +9,8 @@ Decision cost ``ĉ_p`` is each path's mean cost on ``train``. When the router's 
 already needed OCR, OCR is paid whatever path it picks, so only the model time differs between
 paths (``decision_costs``). λ is chosen on ``val`` (``select_lambda``): the most accurate point
 of the cost-quality curve whose scenario-C cost stays within a budget, by default the cost of
-always-vision, the project's success baseline. Test is never used to choose anything.
+always-vision (the success baseline when this router was built; the primary baseline is
+always-hybrid since 15 Nov 2026). Test is never used to choose anything.
 
 Kinds: ``ridge`` (linear, standardised signals + TF-IDF) and ``lgbm`` (LightGBM gradient
 boosting, missing values handled natively).

@@ -90,6 +90,50 @@ def vision_budget(rows: Sequence[LabelRow], scenario: str = "C") -> float:
     return sum(vision.cost(r, scenario) for r in rows) / len(rows)
 
 
+def path_budget(rows: Sequence[LabelRow], path: str, scenario: str = "C") -> float:
+    """Always-``path``'s mean cost on ``rows``."""
+    always = Policy(f"always-{path}", {r.question_id: path for r in rows})
+    return sum(always.cost(r, scenario) for r in rows) / len(rows)
+
+
+@dataclass(frozen=True)
+class Budget:
+    """A router's val C-cost budget: a share of an always-path's cost, or fixed seconds."""
+
+    name: str
+    path: str | None = None
+    share: float = 1.0
+    seconds: float | None = None
+
+    def on(self, rows: Sequence[LabelRow]) -> float:
+        """The budget in seconds per question on ``rows``."""
+        if self.path is None:
+            return float("inf") if self.seconds is None else self.seconds
+        return self.share * path_budget(rows, self.path)
+
+
+def parse_budget(spec: str) -> Budget:
+    """``vision``, ``hybrid``, ``<path>:<fraction>`` (e.g. ``hybrid:0.75``: 25% below
+    always-hybrid, the success criterion), ``none`` or seconds."""
+    if spec == "none":
+        return Budget("none")
+    path, _, fraction = spec.partition(":")
+    if path in ("text", "vision", "hybrid"):
+        try:
+            share = float(fraction) if fraction else 1.0
+        except ValueError:
+            raise ValueError(f"budget fraction must be a number, got {fraction!r}") from None
+        if not 0 < share <= 10:
+            raise ValueError(f"budget fraction must be in (0, 10], got {share}")
+        return Budget(f"always-{path}" + (f" x {share:g}" if fraction else ""), path, share)
+    try:
+        return Budget("fixed", seconds=float(spec))
+    except ValueError:
+        raise ValueError(
+            f"budget must be vision, hybrid, <path>:<fraction>, none or seconds; got {spec!r}"
+        ) from None
+
+
 def grid_point(rows: Sequence[LabelRow], policy: Policy, params: tuple[float, ...]) -> GridPoint:
     """Score, scenario-C cost and path shares of ``policy`` on ``rows``."""
     n = len(rows)

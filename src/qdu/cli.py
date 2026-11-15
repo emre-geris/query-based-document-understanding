@@ -272,7 +272,12 @@ def cmd_router_evaluate(args: argparse.Namespace) -> int:
     try:
         policies = [read_policy(p) for p in args.choices]
         results = evaluate(
-            rows, policies, baseline=args.baseline, resamples=args.resamples, seed=args.seed
+            rows,
+            policies,
+            baseline=args.baseline,
+            resamples=args.resamples,
+            seed=args.seed,
+            units=_units(rows, args.tatdqa_reports),
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -448,11 +453,179 @@ def cmd_router_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_router_two_stage(args: argparse.Namespace) -> int:
+def _stage_extractors(stage1: Sequence[str], stage2: Sequence[str]) -> list | None:
+    """The extractors of a two-stage router, or None (after printing why) if invalid."""
+    from qdu.router import EXTRACTORS
+
+    unknown = [e for e in (*stage1, *stage2) if e not in EXTRACTORS]
+    if unknown:
+        print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
+        return None
+    first_ocr = [e for e in stage1 if EXTRACTORS[e]().needs_ocr]
+    if first_ocr:
+        print(f"stage 1 must not need OCR, but {first_ocr} do", file=sys.stderr)
+        return None
+    return [EXTRACTORS[e]() for e in dict.fromkeys((*stage1, *stage2))]
+
+
+def _signal_table(rows, extractors, ocr_path: Path, layout_path: Path):
+    """Feature table of ``rows`` and each question's page layout time."""
     from qdu.layout import load_layout
+    from qdu.router import build_features, load_ocr, router_inputs
+
+    ocr = load_ocr(ocr_path) if any(e.needs_ocr for e in extractors) else None
+    layout = load_layout(layout_path) if any(e.needs_layout for e in extractors) else None
+    table = build_features(router_inputs(rows, ocr, layout), extractors)
+    layout_s = {r.question_id: layout[r.doc_id].latency_s if layout else 0.0 for r in rows}
+    return table, layout_s
+
+
+def _units(rows, reports_path: Path) -> dict[str, str]:
+    """Bootstrap units: TAT-DQA pages resample by annual report."""
+    from qdu.data.tatdqa import read_reports
+    from qdu.router.evaluate import resampling_units
+
+    if not any(r.dataset == "tatdqa" for r in rows):
+        return {}
+    return resampling_units(rows, read_reports(reports_path))
+
+
+def _ci(d, scale: float, digits: int) -> str:
+    if d is None:
+        return "-"
+    return (
+        f"{d.estimate * scale:+.{digits}f} "
+        f"[{d.low * scale:+.{digits}f}, {d.high * scale:+.{digits}f}]"
+    )
+
+
+def cmd_router_lodo(args: argparse.Namespace) -> int:
+    import csv
+
+    from qdu.router import read_labels
+    from qdu.router.baselines import parse_budget
+    from qdu.router.evaluate import evaluate
+    from qdu.router.lodo import leave_one_out
+    from qdu.router.two_stage import ROUTER_PATHS
+
+    stage1, stage2, paths = _names(args.stage1), _names(args.stage2), _names(args.paths)
+    try:
+        budget = parse_budget(args.budget)
+    except ValueError as exc:
+        print(f"--budget must be valid: {exc}", file=sys.stderr)
+        return 2
+    extractors = _stage_extractors(stage1, stage2)
+    if extractors is None:
+        return 2
+    train = read_labels(args.labels, splits=["train"])
+    val = read_labels(args.labels, splits=["val"])
+    if args.on == "test":
+        print("Note: scoring held-out test questions: for the final evaluation only.")
+        scored = read_labels(args.labels, splits=["test"])
+    else:
+        scored = [*train, *val]
+    rows = list({r.question_id: r for r in [*train, *val, *scored]}.values())
+    table, layout_s = _signal_table(rows, extractors, args.ocr, args.layout)
+    try:
+        held = leave_one_out(
+            train,
+            val,
+            scored,
+            table.features,
+            table.seconds,
+            layout_s,
+            budget=budget,
+            datasets=_names(args.datasets) if args.datasets else None,
+            page_seconds=table.page_seconds,
+            stage1=stage1,
+            stage2=stage2,
+            needs_layout={e.name: e.needs_layout for e in extractors},
+            paths=paths,
+            seed=args.seed,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"Leave one dataset out ({args.on} questions of the held-out dataset); router fitted on "
+        f"the others' train, thresholds on their val within {budget.name}. Score x 100, C s; "
+        "95% CIs resample documents"
+    )
+    print(
+        f"  {'held out':<16}{'method':<16}{'n':>6}{'score':>7}{'C s':>7}   "
+        f"{'score - hybrid':<21}{'C s - hybrid':<21}score - vision"
+    )
+    units = _units(scored, args.tatdqa_reports)
+    lines = []
+    for h in held:
+        res = {
+            b: {
+                m.method: m
+                for m in evaluate(
+                    h.rows,
+                    [h.policy],
+                    baseline=b,
+                    resamples=args.resamples,
+                    seed=args.seed,
+                    units=units,
+                )
+                if m.group == "ALL"
+            }
+            for b in ("always-hybrid", "always-vision")
+        }
+        n = len(h.rows)
+        shares = {p: sum(c == p for c in h.policy.choice.values()) / n for p in ROUTER_PATHS}
+        for method in ("always-vision", "always-hybrid", h.policy.name):
+            m, v = res["always-hybrid"][method], res["always-vision"][method]
+            is_router = method == h.policy.name
+            print(
+                f"  {h.dataset:<16}{'router' if is_router else method:<16}{m.n:>6}"
+                f"{m.score * 100:>7.1f}{m.cost_c:>7.2f}   "
+                f"{_ci(m.score_vs_baseline, 100, 1):<21}{_ci(m.cost_c_vs_baseline, 1, 2):<21}"
+                f"{_ci(v.score_vs_baseline, 100, 1)}"
+            )
+            line = {
+                "held_out": h.dataset,
+                "method": "router" if is_router else method,
+                "n": m.n,
+                "score": f"{m.score:.6f}",
+                "cost_c_s": f"{m.cost_c:.4f}",
+                "cost_b_s": f"{m.cost_b:.4f}",
+                "tokens": f"{m.tokens:.1f}",
+            }
+            for b, r in res.items():
+                short = b.removeprefix("always-")
+                for key, d in (
+                    ("score", r[method].score_vs_baseline),
+                    ("cost_c", r[method].cost_c_vs_baseline),
+                ):
+                    for part in ("estimate", "low", "high"):
+                        value = "" if d is None else f"{getattr(d, part):.6f}"
+                        line[f"{key}_vs_{short}_{part}"] = value
+            for p in ROUTER_PATHS:
+                line[f"share_{p}"] = f"{shares[p]:.4f}" if is_router else ""
+            line["params"] = " ".join(f"{t:g}" for t in h.router.params) if is_router else ""
+            line["budget_c_s"] = f"{h.budget_s:.4f}"
+            lines.append(line)
+        print(
+            f"  {'':<16}router paths: "
+            + ", ".join(f"{p} {v:.0%}" for p, v in shares.items())
+            + f"; budget on the others' val {h.budget_s:.2f} s"
+        )
+    out = args.out or Path(f"runs/lodo/lodo_{args.on}.csv")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(lines[0]), lineterminator="\n")
+        w.writeheader()
+        w.writerows(lines)
+    print(f"Wrote {out}")
+    return 0
+
+
+def cmd_router_two_stage(args: argparse.Namespace) -> int:
     from qdu.provenance import file_sha256, run_metadata
-    from qdu.router import EXTRACTORS, build_features, load_ocr, read_labels, router_inputs
-    from qdu.router.baselines import select_point, write_grid
+    from qdu.router import read_labels
+    from qdu.router.baselines import parse_budget, select_point, write_grid
     from qdu.router.train import write_choices
     from qdu.router.two_stage import MODEL_FILE, ROUTER_PATHS, save_two_stage, train_two_stage
 
@@ -462,22 +635,14 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
         print(f"--paths must include text and vision, from {list(ROUTER_PATHS)}", file=sys.stderr)
         return 2
     three_way = "hybrid" in paths
-    if args.budget not in ("vision", "hybrid", "none"):
-        try:
-            float(args.budget)
-        except ValueError:
-            print("--budget must be vision, hybrid, none or seconds", file=sys.stderr)
-            return 2
-    unknown = [e for e in (*stage1, *stage2) if e not in EXTRACTORS]
-    if unknown:
-        print(f"unknown extractors {unknown}; available: {sorted(EXTRACTORS)}", file=sys.stderr)
+    try:
+        spec = parse_budget(args.budget)
+    except ValueError as exc:
+        print(f"--budget must be valid: {exc}", file=sys.stderr)
         return 2
-    first_ocr = [e for e in stage1 if EXTRACTORS[e]().needs_ocr]
-    if first_ocr:
-        print(f"stage 1 must not need OCR, but {first_ocr} do", file=sys.stderr)
+    extractors = _stage_extractors(stage1, stage2)
+    if extractors is None:
         return 2
-    names = list(dict.fromkeys((*stage1, *stage2)))
-    extractors = [EXTRACTORS[e]() for e in names]
     needs_layout = {e.name: e.needs_layout for e in extractors}
     train = read_labels(args.labels, splits=["train"])
     val = read_labels(args.labels, splits=["val"])
@@ -485,19 +650,8 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
     if args.split == "test":
         print("Note: writing test choices; thresholds are fixed on train/val beforehand.")
     rows = list({r.question_id: r for r in [*train, *val, *target]}.values())
-    ocr = load_ocr(args.ocr) if any(e.needs_ocr for e in extractors) else None
-    layout = load_layout(args.layout) if any(needs_layout.values()) else None
-    table = build_features(router_inputs(rows, ocr, layout), extractors)
-    layout_s = {r.question_id: layout[r.doc_id].latency_s if layout else 0.0 for r in rows}
-    if args.budget in ("vision", "hybrid", "none"):
-        budget_name = f"always-{args.budget}" if args.budget != "none" else "none"
-        budget = {
-            "vision": None,
-            "hybrid": sum(r.cost_c["hybrid"] for r in val) / len(val),
-            "none": float("inf"),
-        }[args.budget]
-    else:
-        budget_name, budget = "fixed", float(args.budget)
+    table, layout_s = _signal_table(rows, extractors, args.ocr, args.layout)
+    budget_name, budget = spec.name, spec.on(val)
     try:
         router = train_two_stage(
             train,
@@ -1215,7 +1369,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     lab.set_defaults(func=cmd_router_labels)
     ev = router_sub.add_parser(
-        "evaluate", help="baselines and routing choices vs always-vision, with document-level CIs"
+        "evaluate", help="baselines and routing choices vs always-hybrid, with document-level CIs"
     )
     ev.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
     ev.add_argument("--split", choices=SPLIT_CHOICES, default="val")
@@ -1229,12 +1383,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ev.add_argument(
         "--baseline",
-        default="always-vision",
-        help="method the CIs compare against (always-text|vision|hybrid, oracle or a router)",
+        default="always-hybrid",
+        help="method the CIs compare against (default always-hybrid, the primary baseline; "
+        "always-text|vision, oracle or a router)",
     )
     ev.add_argument("--resamples", type=int, default=1000)
     ev.add_argument("--seed", type=int, default=0)
     ev.add_argument("--out", type=Path, help="write the results as CSV")
+    ev.add_argument(
+        "--tatdqa-reports",
+        type=Path,
+        default=Path("benchmarks/tatdqa_reports.csv"),
+        help="TAT-DQA document -> report: the bootstrap resamples TAT-DQA by report",
+    )
     ev.set_defaults(func=cmd_router_evaluate)
     feat = router_sub.add_parser("features", help="run signal extractors into a feature table")
     feat.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
@@ -1289,9 +1450,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ts.add_argument(
         "--budget",
-        default="vision",
-        help="val C-cost budget for the thresholds: vision (default, the success baseline), "
-        "hybrid, none, or seconds",
+        default="hybrid:0.75",
+        help="val C-cost budget for the thresholds: hybrid:0.75 (default: 25%% below "
+        "always-hybrid, the success criterion), vision, hybrid, <path>:<fraction>, none or seconds",
     )
     ts.add_argument(
         "--split", choices=("val", "test"), default="val", help="split to write choices for"
@@ -1302,6 +1463,33 @@ def build_parser() -> argparse.ArgumentParser:
     ts.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
     ts.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
     ts.set_defaults(func=cmd_router_two_stage)
+    lo = router_sub.add_parser(
+        "lodo", help="leave one dataset out: the two-stage router on a dataset it never saw"
+    )
+    lo.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    lo.add_argument("--stage1", default="s1,s3", help="OCR-free signals for stage 1")
+    lo.add_argument("--stage2", default="s1,s2,s3,s4", help="signals for stage 2 (after OCR)")
+    lo.add_argument("--paths", default="text,vision,hybrid")
+    lo.add_argument("--budget", default="hybrid:0.75", help="as for two-stage")
+    lo.add_argument("--datasets", help="held-out datasets, comma-separated (default: all)")
+    lo.add_argument(
+        "--on",
+        choices=("dev", "test"),
+        default="dev",
+        help="score the held-out dataset's train+val questions (dev, default) or its test ones",
+    )
+    lo.add_argument("--resamples", type=int, default=1000)
+    lo.add_argument("--seed", type=int, default=0)
+    lo.add_argument("--out", type=Path, help="default runs/lodo/lodo_<on>.csv")
+    lo.add_argument("--ocr", type=Path, default=Path("results/full-qwen3.5-4b/ocr.jsonl.gz"))
+    lo.add_argument("--layout", type=Path, default=Path("results/full-qwen3.5-4b/layout.jsonl.gz"))
+    lo.add_argument(
+        "--tatdqa-reports",
+        type=Path,
+        default=Path("benchmarks/tatdqa_reports.csv"),
+        help="TAT-DQA document -> report: the bootstrap resamples TAT-DQA by report",
+    )
+    lo.set_defaults(func=cmd_router_lodo)
     em = router_sub.add_parser(
         "embed",
         help="S5/S6 signals: CLIP page and MiniLM question embeddings (resumable; needs the "

@@ -41,7 +41,8 @@ class SourceSpec:
     custom_loader: "Callable[[], Dataset] | None" = None
     """Builds the dataset when it is not a plain Hugging Face dataset (e.g. TAT-DQA)."""
     fixed_split: str | None = None
-    """Router split for every question (e.g. ``test`` for unseen-data test sets)."""
+    """Manifest split for every question (e.g. ``test`` for TAT-DQA). The label table may
+    re-derive it (`qdu.data.splits.router_split`, scheme v2)."""
 
 
 def _docvqa(index: int, row: dict[str, Any]) -> QARecord:
@@ -149,7 +150,7 @@ SOURCES: dict[str, SourceSpec] = {
         hf_id="next-tat/TAT-DQA",
         hf_config=None,
         hf_split="test",
-        role="unseen-data test only",
+        role="router train/val/test, split by annual report (scheme v2)",
         license="CC BY 4.0",
         metadata_columns=("uid", "doc_uid", "page", "question", "answers", "answer_type", "scale"),
         adapter=_tatdqa,

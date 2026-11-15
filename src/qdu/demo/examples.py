@@ -1,7 +1,7 @@
 """Example pages for the demo, with gold answers and the full run's recorded results.
 
 Examples come from the **val** split only: the test split stays untouched until the final
-evaluation (CLAUDE.md, Router work), and TAT-DQA is test-only, so it is not offered.
+evaluation (CLAUDE.md, Router work). Under split scheme v2 this includes TAT-DQA val pages.
 
 For an example the demo can work without a GPU and still show real numbers:
 

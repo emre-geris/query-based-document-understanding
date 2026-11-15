@@ -12,8 +12,10 @@ A router that computes OCR signals for every question therefore pays OCR even wh
 picks vision, which is why the oracle (no signal cost) is an optimistic ceiling.
 
 Baselines are always-text, always-vision, always-hybrid and the oracle (latency ties). Every
-method is compared with always-vision, the project's success baseline, by a paired bootstrap
-over documents (qdu.evaluation.bootstrap).
+method is compared with always-hybrid, the primary baseline (what a document-QA system that
+sends both the OCR text and the page does; Decided, Emre, 15 Nov 2026), by a paired bootstrap
+over documents (qdu.evaluation.bootstrap); always-vision is reported next to it, e.g. with
+``--baseline always-vision``.
 """
 
 import csv
@@ -25,7 +27,7 @@ from qdu.evaluation.bootstrap import Difference, paired_differences
 from qdu.router.labels import PATHS, LabelRow
 
 PATH_USES_OCR = {"text": True, "vision": False, "hybrid": True}
-BASELINE = "always-vision"
+BASELINE = "always-hybrid"
 
 
 @dataclass(frozen=True)
@@ -109,8 +111,12 @@ def evaluate(
     baseline: str = BASELINE,
     resamples: int = 1000,
     seed: int = 0,
+    units: Mapping[str, str] | None = None,
 ) -> list[MethodResult]:
-    """Baselines and ``policies`` per dataset and over all rows (group ``ALL``)."""
+    """Baselines and ``policies`` per dataset and over all rows (group ``ALL``).
+
+    The bootstrap resamples documents; ``units`` maps a page (``doc_id``) to a larger unit to
+    resample instead, e.g. a TAT-DQA page to its annual report (`resampling_units`)."""
     rows = list(rows)
     if not rows:
         raise ValueError("no questions to evaluate (check the split and dataset filters)")
@@ -131,7 +137,7 @@ def evaluate(
 
     out = []
     for group, rs in groups.items():
-        document = {r.question_id: r.doc_id for r in rs}
+        document = {r.question_id: (units or {}).get(r.doc_id, r.doc_id) for r in rs}
         score = {
             m.name: {r.question_id: r.score[m.choice[r.question_id]] for r in rs} for m in methods
         }
@@ -154,6 +160,17 @@ def evaluate(
                 )
             )
     return out
+
+
+def resampling_units(rows: Iterable[LabelRow], tatdqa_reports: Mapping[str, str]) -> dict[str, str]:
+    """TAT-DQA page -> its annual report, the unit the bootstrap resamples: a report gives
+    several documents (`qdu.data.tatdqa`), so its pages are not independent."""
+    units = {}
+    for r in rows:
+        if r.dataset == "tatdqa":
+            uid = r.doc_id.removeprefix("tatdqa/").rsplit("_p", 1)[0]
+            units[r.doc_id] = f"tatdqa-report/{tatdqa_reports[uid]}"
+    return units
 
 
 def _ci(d: Difference | None, scale: float, digits: int) -> str:

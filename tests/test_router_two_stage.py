@@ -1,7 +1,11 @@
+from dataclasses import replace
+
 import pytest
 
 from qdu.cli import main
+from qdu.router.baselines import Budget, parse_budget, path_budget
 from qdu.router.labels import LabelRow
+from qdu.router.lodo import leave_one_out
 from qdu.router.two_stage import NeedsImage, load_two_stage, save_two_stage, train_two_stage
 
 OCR_S = 0.5
@@ -256,3 +260,80 @@ def test_load_rejects_other_files(tmp_path):
     joblib.dump({"something": 1}, tmp_path / "model.joblib")
     with pytest.raises(ValueError, match="not a two-stage router"):
         load_two_stage(tmp_path)
+
+
+def test_parse_budget():
+    _, val, *_ = make_data(("chart", "hidden", "plain", "plain"))
+    hybrid = path_budget(val, "hybrid")
+    assert parse_budget("hybrid").on(val) == pytest.approx(hybrid)
+    quarter_off = parse_budget("hybrid:0.75")
+    assert quarter_off.name == "always-hybrid x 0.75"
+    assert quarter_off.on(val) == pytest.approx(0.75 * hybrid)
+    assert parse_budget("vision").on(val) == pytest.approx(path_budget(val, "vision"))
+    assert parse_budget("1.5") == Budget("fixed", seconds=1.5)
+    assert parse_budget("none").on(val) == float("inf")
+    for bad in ("cheap", "hybrid:x", "hybrid:0", "vision:-1"):
+        with pytest.raises(ValueError):
+            parse_budget(bad)
+
+
+def two_datasets():
+    """The same synthetic data twice, as docvqa and chartqa (ids kept apart)."""
+    train, val, features, seconds, layout_s = make_data(("chart", "hidden", "plain", "dense"))
+    other = {}
+
+    def copy(r):
+        qid = r.question_id.replace("docvqa/", "chartqa/")
+        other[qid] = r.question_id
+        return replace(r, question_id=qid, doc_id=f"c{r.doc_id}", dataset="chartqa")
+
+    train2, val2 = [copy(r) for r in train], [copy(r) for r in val]
+    for new, old in other.items():
+        features[new], seconds[new], layout_s[new] = features[old], seconds[old], layout_s[old]
+    return [*train, *train2], [*val, *val2], features, seconds, layout_s
+
+
+def test_each_held_out_dataset_is_never_seen_in_fitting_or_tuning():
+    train, val, features, seconds, layout_s = two_datasets()
+    held = leave_one_out(
+        train,
+        val,
+        [*train, *val],
+        features,
+        seconds,
+        layout_s,
+        budget=parse_budget("hybrid"),
+        stage1=("s1", "s3"),
+        stage2=("s1", "s2", "s3"),
+        needs_layout=NEEDS_LAYOUT,
+    )
+    assert [h.dataset for h in held] == ["chartqa", "docvqa"]
+    for h in held:
+        assert {r.dataset for r in h.rows} == {h.dataset}
+        assert set(h.policy.choice) == {r.question_id for r in h.rows}
+        others = [r for r in val if r.dataset != h.dataset]
+        assert h.budget_s == pytest.approx(path_budget(others, "hybrid"))
+        # the other dataset is an exact copy, so the held-out router routes it perfectly
+        assert all(r.score[h.policy.choice[r.question_id]] == 1.0 for r in h.rows)
+
+
+def test_leaving_out_the_only_dataset_fails():
+    train, val, features, seconds, layout_s = make_data(("chart", "plain"))
+    with pytest.raises(ValueError, match="leaves no train"):
+        leave_one_out(
+            train,
+            val,
+            val,
+            features,
+            seconds,
+            layout_s,
+            budget=parse_budget("hybrid"),
+            stage1=("s1", "s3"),
+            stage2=("s1", "s2", "s3"),
+            needs_layout=NEEDS_LAYOUT,
+        )
+
+
+def test_cli_lodo_rejects_bad_budget(capsys):
+    assert main(["router", "lodo", "--budget", "hybrid:x"]) == 2
+    assert "--budget must be" in capsys.readouterr().err

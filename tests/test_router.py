@@ -109,7 +109,9 @@ def test_labels_round_trip_and_filters(run, tmp_path: Path) -> None:
 
 def test_baselines_and_policy_costs(run) -> None:
     rows = build_labels(*run)
-    results = {(m.group, m.method): m for m in evaluate(rows, resamples=50)}
+    results = {
+        (m.group, m.method): m for m in evaluate(rows, baseline="always-vision", resamples=50)
+    }
     vision = results[("ALL", "always-vision")]
     assert vision.score == pytest.approx(0.75)
     assert vision.cost_c == pytest.approx((1.0 + 1.0 + 1.1 + 0.3) / 4)
@@ -118,6 +120,8 @@ def test_baselines_and_policy_costs(run) -> None:
     assert oracle.score == 1.0
     assert oracle.score_vs_baseline.estimate == pytest.approx(0.25)
     assert results[("docvqa", "always-text")].n == 3
+    default = {(m.group, m.method): m for m in evaluate(rows, resamples=50)}
+    assert default[("ALL", "always-hybrid")].score_vs_baseline is None  # primary baseline
 
 
 def test_router_pays_for_its_own_ocr(run) -> None:
@@ -266,3 +270,18 @@ def test_cascade_pays_for_both_calls_when_it_escalates(run) -> None:
     assert answer_confidence([math.log(0.5), math.log(0.5)]) == pytest.approx(0.25)
     assert answer_confidence([math.log(0.5), math.log(1.0)], "mean_token") == pytest.approx(0.75)
     assert answer_confidence([math.log(0.5), math.log(1.0)], "min_token") == pytest.approx(0.5)
+
+
+def test_tatdqa_pages_resample_by_report(run) -> None:
+    from dataclasses import replace
+
+    from qdu.router.evaluate import resampling_units
+
+    rows = build_labels(*run)
+    pages = ["tatdqa/aaa_p1", "tatdqa/aaa_p2", "tatdqa/bbb_p1"]
+    tat = [replace(r, dataset="tatdqa", doc_id=pages[i % len(pages)]) for i, r in enumerate(rows)]
+    units = resampling_units([*rows, *tat], {"aaa": "acme.pdf", "bbb": "acme.pdf"})
+    assert units == {p: "tatdqa-report/acme.pdf" for p in pages}
+    one = evaluate(tat, baseline="always-vision", resamples=50, units=units)
+    hybrid = next(m for m in one if m.group == "ALL" and m.method == "always-hybrid")
+    assert hybrid.score_vs_baseline.n_documents == 1
