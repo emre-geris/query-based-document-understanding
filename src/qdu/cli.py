@@ -1125,10 +1125,9 @@ def _recorded_model(run: Path) -> str:
         info = json.loads((run / "run_info.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return "GPU koşusunun"
-    model = info.get("vision_model") or info.get("text_model") or "?"
-    gpu = ", ".join(g.get("name", "?") for g in info.get("gpu") or []) or "GPU"
-    ocr = info.get("ocr_engine", "")
-    return f"{model} ({gpu}{', OCR ' + ocr if ocr else ''})"
+    model = (info.get("vision_model") or info.get("text_model") or "?").split("/")[-1]
+    gpu = ", ".join(g.get("name", "?").removeprefix("NVIDIA ") for g in info.get("gpu") or [])
+    return f"{model} ({gpu})" if gpu else model
 
 
 def cmd_demo_serve(args: argparse.Namespace) -> int:
@@ -1147,14 +1146,10 @@ def cmd_demo_serve(args: argparse.Namespace) -> int:
     recorded = load_recorded(ids, args.run) if args.model == "replay" else {}
     store = ImageStore()
     model = {
-        "replay": f"örnek sorular: {_recorded_model(args.run)} kayıtlı cevapları; "
-        "diğer sorular: deneme modeli",
+        "replay": f"{_recorded_model(args.run)}, kayıtlı cevaplar (yeni sorular: deneme modeli)",
         "fake": "deneme modeli (cevaplar anlamsız)",
     }.get(args.model, args.model)
-    status = (
-        f"Yönlendirici: {meta.get('router', args.router)} "
-        f"({'/'.join(meta.get('paths', []))}) · Model: {model}"
-    )
+    status = f"Model: {model} · Yönlendirici: {meta.get('router', args.router)}"
     session = DemoSession(service, pages, lambda e: store.get(e.record).convert("RGB"), recorded)
     try:
         app = create_app(session, status)
