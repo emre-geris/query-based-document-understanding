@@ -297,21 +297,27 @@ from pathlib import Path
 from qdu.router import read_labels, load_ocr, router_inputs, build_features, EXTRACTORS
 from qdu.layout import load_layout
 from qdu.router.ablation import predictability
-lab = Path('results/full-qwen3.5-4b/labels.csv')
-train = read_labels(lab, splits=['train']); val = read_labels(lab, splits=['val'])
-ex = [EXTRACTORS[k]() for k in ('s1', 's2', 's3', 's4')]
+
+lab = Path("results/full-qwen3.5-4b/labels.csv")
+train = read_labels(lab, splits=["train"])
+val = read_labels(lab, splits=["val"])
+ex = [EXTRACTORS[k]() for k in ("s1", "s2", "s3", "s4")]
 feats = build_features(router_inputs(train + val, load_ocr(), load_layout()), ex).features
 docs = sorted({r.doc_id for r in train})
-print('train', len(train), 'questions on', len(docs), 'docs; val', len(val))
+print("train", len(train), "questions on", len(docs), "docs; val", len(val))
 for frac in (0.1, 0.25, 0.5, 0.75, 1.0):
     aucs = []
     for seed in (0, 1, 2):
-        rng = random.Random(seed); keep = set(rng.sample(docs, max(1, int(frac * len(docs)))))
+        rng = random.Random(seed)
+        keep = set(rng.sample(docs, max(1, int(frac * len(docs)))))
         sub = [r for r in train if r.doc_id in keep]
         auc, within, _ = predictability(sub, val, feats, tfidf=True, seed=seed)
-        aucs.append((auc['text_ok'], within))
-        if frac == 1.0: break
-    print(f'{frac:>5.0%} train ({len(sub):>5} q): text_ok AUC {st.mean(a for a,_ in aucs):.3f}  within-dataset {st.mean(w for _,w in aucs):.3f}')
+        aucs.append((auc["text_ok"], within))
+        if frac == 1.0:
+            break
+    print(
+        f"{frac:>5.0%} train ({len(sub):>5} q): text_ok AUC {st.mean(a for a, _ in aucs):.3f}  within-dataset {st.mean(w for _, w in aucs):.3f}"
+    )
 ```
 
 ### A2. CLIP page embeddings and timing (writes clip_pages.npz; arg: output folder)
@@ -323,20 +329,31 @@ import numpy as np
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 from qdu.data import read_manifest, ImageStore
+
 recs = {}
-for r in read_manifest(Path('benchmarks/full.csv')):
+for r in read_manifest(Path("benchmarks/full.csv")):
     recs.setdefault(r.doc_id, r)
-m = SentenceTransformer('sentence-transformers/clip-ViT-B-32', device='cpu')
+m = SentenceTransformer("sentence-transformers/clip-ViT-B-32", device="cpu")
 store = ImageStore()
-m.encode([store.get(next(iter(recs.values()))).convert('RGB')])  # warm-up
+m.encode([store.get(next(iter(recs.values()))).convert("RGB")])  # warm-up
 ids, vecs, secs = [], [], []
 for i, (doc, r) in enumerate(recs.items()):
-    img = store.get(r).convert('RGB')
-    t = time.perf_counter(); v = m.encode([img], normalize_embeddings=True)[0]; secs.append(time.perf_counter() - t)
-    ids.append(doc); vecs.append(v.astype(np.float32))
-    if i % 500 == 0: print(i, f'{np.median(secs)*1000:.0f} ms/page', flush=True)
-np.savez_compressed(sys.argv[1] + '/clip_pages.npz', ids=np.array(ids), vecs=np.stack(vecs), secs=np.array(secs))
-print('done', len(ids), f'median {np.median(secs)*1000:.0f} ms, mean {np.mean(secs)*1000:.0f} ms per page')
+    img = store.get(r).convert("RGB")
+    t = time.perf_counter()
+    v = m.encode([img], normalize_embeddings=True)[0]
+    secs.append(time.perf_counter() - t)
+    ids.append(doc)
+    vecs.append(v.astype(np.float32))
+    if i % 500 == 0:
+        print(i, f"{np.median(secs) * 1000:.0f} ms/page", flush=True)
+np.savez_compressed(
+    sys.argv[1] + "/clip_pages.npz", ids=np.array(ids), vecs=np.stack(vecs), secs=np.array(secs)
+)
+print(
+    "done",
+    len(ids),
+    f"median {np.median(secs) * 1000:.0f} ms, mean {np.mean(secs) * 1000:.0f} ms per page",
+)
 ```
 
 ### A3. Richer signals → text_ok AUC (arg: folder with clip_pages.npz)
@@ -345,6 +362,7 @@ print('done', len(ids), f'median {np.median(secs)*1000:.0f} ms, mean {np.mean(se
 """Does the router get better with richer signals? Validation AUC of text_ok (Doğukan's
 ablation setup: LightGBM, S1-S4 + question TF-IDF), adding a question embedding and a CLIP
 embedding of the page image. PCA is fitted on training pages only."""
+
 import sys
 import numpy as np
 from pathlib import Path
@@ -355,46 +373,58 @@ from qdu.layout import load_layout
 from qdu.router.ablation import predictability
 
 S = Path(sys.argv[1])
-lab = Path('results/full-qwen3.5-4b/labels.csv')
-train = read_labels(lab, splits=['train']); val = read_labels(lab, splits=['val'])
+lab = Path("results/full-qwen3.5-4b/labels.csv")
+train = read_labels(lab, splits=["train"])
+val = read_labels(lab, splits=["val"])
 rows = train + val
-ex = [EXTRACTORS[k]() for k in ('s1', 's2', 's3', 's4')]
+ex = [EXTRACTORS[k]() for k in ("s1", "s2", "s3", "s4")]
 base = build_features(router_inputs(rows, load_ocr(), load_layout()), ex).features
 
-qm = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu')
+qm = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device="cpu")
 QE = qm.encode([r.question for r in rows], batch_size=64, normalize_embeddings=True)
-qemb = {r.question_id: {f'qe_{i}': float(v) for i, v in enumerate(QE[j])} for j, r in enumerate(rows)}
+qemb = {
+    r.question_id: {f"qe_{i}": float(v) for i, v in enumerate(QE[j])} for j, r in enumerate(rows)
+}
 
-z = np.load(S / 'clip_pages.npz')
-page = dict(zip(z['ids'].tolist(), z['vecs']))
+z = np.load(S / "clip_pages.npz")
+page = dict(zip(z["ids"].tolist(), z["vecs"]))
 train_docs = sorted({r.doc_id for r in train})
 pca = PCA(n_components=32, random_state=0).fit(np.stack([page[d] for d in train_docs]))
+
+
 def clip_feats(dims):
     out = {}
     for r in rows:
         v = page[r.doc_id] if dims == 512 else pca.transform(page[r.doc_id][None])[0]
-        out[r.question_id] = {f'pg_{i}': float(x) for i, x in enumerate(v)}
+        out[r.question_id] = {f"pg_{i}": float(x) for i, x in enumerate(v)}
     return out
+
+
 pg512, pg32 = clip_feats(512), clip_feats(32)
 
 # CLIP text-image agreement: does the question "look like" the page?
-cm = SentenceTransformer('sentence-transformers/clip-ViT-B-32', device='cpu')
+cm = SentenceTransformer("sentence-transformers/clip-ViT-B-32", device="cpu")
 QT = cm.encode([r.question for r in rows], batch_size=64, normalize_embeddings=True)
-sim = {r.question_id: {'pg_qsim': float(QT[j] @ page[r.doc_id])} for j, r in enumerate(rows)}
+sim = {r.question_id: {"pg_qsim": float(QT[j] @ page[r.doc_id])} for j, r in enumerate(rows)}
+
 
 def merge(*fs):
     return {q: {k: v for f in fs for k, v in f[q].items()} for q in base}
 
+
 configs = [
-    ('S1-S4 + TF-IDF (now)', base),
-    ('+ question embedding', merge(base, qemb)),
-    ('+ page image (CLIP, 32-d PCA)', merge(base, pg32, sim)),
-    ('+ page image (CLIP, 512-d)', merge(base, pg512, sim)),
-    ('+ question emb. + page image (32-d)', merge(base, qemb, pg32, sim)),
+    ("S1-S4 + TF-IDF (now)", base),
+    ("+ question embedding", merge(base, qemb)),
+    ("+ page image (CLIP, 32-d PCA)", merge(base, pg32, sim)),
+    ("+ page image (CLIP, 512-d)", merge(base, pg512, sim)),
+    ("+ question emb. + page image (32-d)", merge(base, qemb, pg32, sim)),
 ]
 for name, f in configs:
     auc, within, _ = predictability(train, val, f, tfidf=True, seed=0)
-    print(f'{name:<38} text_ok {auc["text_ok"]:.3f}  within-dataset {within:.3f}  beats {auc["beats_vision"]:.3f}', flush=True)
+    print(
+        f"{name:<38} text_ok {auc['text_ok']:.3f}  within-dataset {within:.3f}  beats {auc['beats_vision']:.3f}",
+        flush=True,
+    )
 ```
 
 ### A4. OCR-free router within the always-vision budget (arg: same folder; for the GPU-time variant replace the CLIP page time by 0.005 s)
@@ -404,6 +434,7 @@ for name, f in configs:
 train to predict text_ok; send to text when p >= t, else vision. Costs include the router's own
 layout and CLIP time per page and its per-question time; no OCR unless text is chosen.
 Threshold swept on val (as the project's other routers), CIs vs always-vision."""
+
 import sys, time
 import numpy as np
 import lightgbm as lgb
@@ -415,48 +446,101 @@ from qdu.router import read_labels, router_inputs, build_features, EXTRACTORS, P
 from qdu.layout import load_layout
 
 S = Path(sys.argv[1])
-lab = Path('results/full-qwen3.5-4b/labels.csv')
-train = read_labels(lab, splits=['train']); val = read_labels(lab, splits=['val'])
+lab = Path("results/full-qwen3.5-4b/labels.csv")
+train = read_labels(lab, splits=["train"])
+val = read_labels(lab, splits=["val"])
 rows = train + val
 layout = load_layout()
-tab = build_features(router_inputs(rows, None, layout), [EXTRACTORS['s1'](), EXTRACTORS['s3']()])
+tab = build_features(router_inputs(rows, None, layout), [EXTRACTORS["s1"](), EXTRACTORS["s3"]()])
 base = tab.features
-qm = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu')
-t0 = time.perf_counter(); QE = qm.encode([r.question for r in rows], batch_size=64, normalize_embeddings=True); qe_s = (time.perf_counter() - t0) / len(rows)
+qm = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device="cpu")
+t0 = time.perf_counter()
+QE = qm.encode([r.question for r in rows], batch_size=64, normalize_embeddings=True)
+qe_s = (time.perf_counter() - t0) / len(rows)
 qe = {r.question_id: QE[j] for j, r in enumerate(rows)}
-z = np.load(S / 'clip_pages.npz'); page = dict(zip(z['ids'].tolist(), z['vecs'])); page_s = dict(zip(z['ids'].tolist(), z['secs']))
+z = np.load(S / "clip_pages.npz")
+page = dict(zip(z["ids"].tolist(), z["vecs"]))
+page_s = dict(zip(z["ids"].tolist(), z["secs"]))
+
 
 def design(rs, use_qe, use_pg, vec, fit):
     names = sorted({k for r in train for k in base[r.question_id]})
-    blocks = [sparse.csr_matrix(np.array([[base[r.question_id].get(n, np.nan) for n in names] for r in rs]))]
+    blocks = [
+        sparse.csr_matrix(
+            np.array([[base[r.question_id].get(n, np.nan) for n in names] for r in rs])
+        )
+    ]
     q = [r.question for r in rs]
-    if fit: vec.fit(q)
+    if fit:
+        vec.fit(q)
     blocks.append(vec.transform(q))
-    if use_qe: blocks.append(sparse.csr_matrix(np.stack([qe[r.question_id] for r in rs])))
-    if use_pg: blocks.append(sparse.csr_matrix(np.stack([page[r.doc_id] for r in rs])))
-    return sparse.hstack(blocks, format='csr')
+    if use_qe:
+        blocks.append(sparse.csr_matrix(np.stack([qe[r.question_id] for r in rs])))
+    if use_pg:
+        blocks.append(sparse.csr_matrix(np.stack([page[r.doc_id] for r in rs])))
+    return sparse.hstack(blocks, format="csr")
 
-vision_c = sum(r.cost_c['vision'] for r in val) / len(val)
+
+vision_c = sum(r.cost_c["vision"] for r in val) / len(val)
 results = []
-for name, use_qe, use_pg in [('OCR-free: S1+S3+TF-IDF', False, False), ('+ question emb.', True, False), ('+ CLIP page', False, True), ('+ question emb. + CLIP page', True, True)]:
+for name, use_qe, use_pg in [
+    ("OCR-free: S1+S3+TF-IDF", False, False),
+    ("+ question emb.", True, False),
+    ("+ CLIP page", False, True),
+    ("+ question emb. + CLIP page", True, True),
+]:
     vec = TfidfVectorizer(min_df=3, ngram_range=(1, 2), sublinear_tf=True)
     xtr, xva = design(train, use_qe, use_pg, vec, True), design(val, use_qe, use_pg, vec, False)
-    y = np.array([r.score['text'] >= r.score['vision'] for r in train], dtype=int)
-    m = lgb.LGBMClassifier(n_estimators=400, learning_rate=0.03, num_leaves=15, min_child_samples=30, subsample=0.8, subsample_freq=1, colsample_bytree=0.8, random_state=0, deterministic=True, force_row_wise=True, n_jobs=1, verbose=-1).fit(xtr, y)
+    y = np.array([r.score["text"] >= r.score["vision"] for r in train], dtype=int)
+    m = lgb.LGBMClassifier(
+        n_estimators=400,
+        learning_rate=0.03,
+        num_leaves=15,
+        min_child_samples=30,
+        subsample=0.8,
+        subsample_freq=1,
+        colsample_bytree=0.8,
+        random_state=0,
+        deterministic=True,
+        force_row_wise=True,
+        n_jobs=1,
+        verbose=-1,
+    ).fit(xtr, y)
     p = m.predict_proba(xva)[:, 1]
+
     def policy(t):
-        choice = {r.question_id: ('text' if pi >= t else 'vision') for r, pi in zip(val, p)}
-        pg = {r.question_id: layout[r.doc_id].latency_s + (page_s[r.doc_id] if use_pg else 0.0) for r in val}
-        qs = {r.question_id: sum(tab.seconds[r.question_id].values()) + (qe_s if use_qe else 0.0) for r in val}
-        return Policy(f'{name} t={t:.2f}', choice, page_s=pg, question_s=qs)
+        choice = {r.question_id: ("text" if pi >= t else "vision") for r, pi in zip(val, p)}
+        pg = {
+            r.question_id: layout[r.doc_id].latency_s + (page_s[r.doc_id] if use_pg else 0.0)
+            for r in val
+        }
+        qs = {
+            r.question_id: sum(tab.seconds[r.question_id].values()) + (qe_s if use_qe else 0.0)
+            for r in val
+        }
+        return Policy(f"{name} t={t:.2f}", choice, page_s=pg, question_s=qs)
+
     best = None
     for t in np.round(np.arange(0.3, 0.96, 0.025), 3):
-        pol = policy(t); sc = sum(r.score[pol.choice[r.question_id]] for r in val) / len(val); c = sum(pol.cost(r, 'C') for r in val) / len(val)
-        if c <= vision_c and (best is None or sc > best[1]): best = (t, sc, c)
-    print(f'{name:<30} best within vision budget: t={best[0]:.3f} score {best[1]*100:.1f} C {best[2]:.2f} s', flush=True)
+        pol = policy(t)
+        sc = sum(r.score[pol.choice[r.question_id]] for r in val) / len(val)
+        c = sum(pol.cost(r, "C") for r in val) / len(val)
+        if c <= vision_c and (best is None or sc > best[1]):
+            best = (t, sc, c)
+    print(
+        f"{name:<30} best within vision budget: t={best[0]:.3f} score {best[1] * 100:.1f} C {best[2]:.2f} s",
+        flush=True,
+    )
     results.append(policy(best[0]))
 for r in evaluate(val, results, resamples=1000):
-    if r.group == 'ALL' and r.method not in ('always-text', 'always-hybrid'):
+    if r.group == "ALL" and r.method not in ("always-text", "always-hybrid"):
         s, c = r.score_vs_baseline, r.cost_c_vs_baseline
-        print(f'  {r.method:<40} {r.score*100:5.1f}  C {r.cost_c:.2f} s  B {r.cost_b:.2f} s  tok {r.tokens:6.0f}  ' + (f'score {s.estimate*100:+.1f} [{s.low*100:+.1f}, {s.high*100:+.1f}]  C {c.estimate:+.2f} [{c.low:+.2f}, {c.high:+.2f}]' if s else ''))
+        print(
+            f"  {r.method:<40} {r.score * 100:5.1f}  C {r.cost_c:.2f} s  B {r.cost_b:.2f} s  tok {r.tokens:6.0f}  "
+            + (
+                f"score {s.estimate * 100:+.1f} [{s.low * 100:+.1f}, {s.high * 100:+.1f}]  C {c.estimate:+.2f} [{c.low:+.2f}, {c.high:+.2f}]"
+                if s
+                else ""
+            )
+        )
 ```
