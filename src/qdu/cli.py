@@ -10,7 +10,7 @@ from pathlib import Path
 
 from qdu import benchmark
 from qdu.data.splits import DEFAULT_SCHEME, SPLIT_SCHEMES
-from qdu.pipelines import PIPELINE_NAMES, PipelineInput, build_pipeline
+from qdu.pipelines import ALL_PIPELINES, PIPELINE_NAMES, PipelineInput, build_pipeline
 
 
 def _slug(text: str) -> str:
@@ -104,7 +104,24 @@ def cmd_run(args: argparse.Namespace) -> int:
     from qdu.models import create_model
 
     names = [p.strip() for p in args.pipelines.split(",") if p.strip()]
+    unknown = [p for p in names if p not in ALL_PIPELINES]
+    if unknown:
+        print(f"unknown pipelines {unknown}; choose from {list(ALL_PIPELINES)}", file=sys.stderr)
+        return 2
+    if "crop" in names and args.layout is None:
+        print("the crop pipeline needs --layout (a page-layout file)", file=sys.stderr)
+        return 2
     run_dir = args.runs_dir / _slug(args.name or f"{args.text_model}__{args.vision_model}")
+    needs_ocr = bool({"text", "hybrid", "crop"} & set(names))
+    if not needs_ocr:
+        ocr = None  # vision alone needs no OCR engine (nor PaddleOCR installed)
+    elif args.stored_ocr is not None:
+        from qdu.demo.examples import StoredOcr
+        from qdu.router import load_ocr
+
+        ocr = StoredOcr(load_ocr(args.stored_ocr))  # the labelled run's OCR, its L4 times
+    else:
+        ocr = _ocr(args.ocr, args.psm, args.ocr_cache)
 
     def on_row(row) -> None:
         status = f"ANLS {row.anls:.2f}" if row.error is None else f"ERROR {row.error}"
@@ -114,12 +131,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         run_dir,
         text_model=create_model(args.text_model),
         vision_model=create_model(args.vision_model),
-        # vision alone needs no OCR engine (nor PaddleOCR installed)
-        ocr=_ocr(args.ocr, args.psm, args.ocr_cache) if {"text", "hybrid"} & set(names) else None,
+        ocr=ocr,
         pipelines=names,
         manifest=args.manifest,
         limit=args.limit,
         on_row=on_row,
+        layout=args.layout,
     )
     print(f"\ncompleted {stats.completed}, skipped {stats.skipped}, failed {stats.failed}")
     print(f"Run directory: {run_dir}")
@@ -242,17 +259,21 @@ def _splits(split: str) -> list[str] | None:
 def cmd_router_labels(args: argparse.Namespace) -> int:
     from qdu.data.tatdqa import read_reports
     from qdu.router import build_labels, write_labels
+    from qdu.router.labels import PATHS
 
     reports = read_reports(args.tatdqa_reports) if args.split_scheme != "v1" else None
+    paths = [*PATHS, *_names(args.extra_paths)] if args.extra_paths else list(PATHS)
     rows = build_labels(
         args.run_dir,
         args.manifest,
         tolerance=args.tolerance,
         split_scheme=args.split_scheme,
         tatdqa_reports=reports,
+        extra_runs=args.extra_run,
+        paths=paths,
     )
     out = args.out or args.run_dir / "labels.csv"
-    write_labels(rows, out)
+    write_labels(rows, out, paths)
     by_split: dict[str, int] = {}
     for r in rows:
         by_split[r.split] = by_split.get(r.split, 0) + 1
@@ -1335,7 +1356,20 @@ def build_parser() -> argparse.ArgumentParser:
     run = bench_sub.add_parser("run", help="run pipelines on the sample (resumable)")
     run.add_argument("--text-model", required=True)
     run.add_argument("--vision-model", required=True)
-    run.add_argument("--pipelines", default=",".join(PIPELINE_NAMES))
+    run.add_argument(
+        "--pipelines",
+        default=",".join(PIPELINE_NAMES),
+        help=f"comma-separated, from {', '.join(ALL_PIPELINES)}",
+    )
+    run.add_argument(
+        "--layout", type=Path, help="page-layout file for the crop path (qdu layout detect)"
+    )
+    run.add_argument(
+        "--stored-ocr",
+        type=Path,
+        help="use a packed OCR file (qdu router pack-ocr) instead of running OCR; its times "
+        "are the ones measured when it was made",
+    )
     run.add_argument("--manifest", type=Path, default=benchmark.DEFAULT_MANIFEST)
     run.add_argument("--limit", type=int, help="only the first N questions")
     _add_ocr_options(run)
@@ -1374,6 +1408,16 @@ def build_parser() -> argparse.ArgumentParser:
     lab.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
     lab.add_argument("--tolerance", type=float, default=0.0, help="score tie tolerance (oracle)")
     lab.add_argument("--out", type=Path, help="default <run_dir>/labels.csv")
+    lab.add_argument(
+        "--extra-run",
+        type=Path,
+        action="append",
+        default=[],
+        help="another run whose paths are merged in (repeatable), e.g. a vision-low run",
+    )
+    lab.add_argument(
+        "--extra-paths", help="paths to add from the extra runs, e.g. vision-low (comma-separated)"
+    )
     lab.add_argument(
         "--split-scheme",
         choices=SPLIT_SCHEMES,

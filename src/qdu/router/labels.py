@@ -13,7 +13,9 @@ manifest's under split scheme ``v1`` and re-derived for TAT-DQA under ``v2``, th
 - ``oracle_latency``, ``oracle_tokens``: the cheapest path within ``tolerance`` of the best
   score, ties broken by C seconds or by tokens (as in ``oracle_labels.csv`` of the report)
 
-Only questions with a successful row for every path are included.
+Only questions with a successful row for every path are included. A candidate path from a
+separate run (e.g. ``vision-low``, Phase 7) is merged with ``extra_runs``: the latest successful
+row per (question, path) across all runs is used, and ``paths`` lists every path to include.
 """
 
 import csv
@@ -71,12 +73,14 @@ def build_labels(
     paths: Sequence[str] = PATHS,
     split_scheme: str = DEFAULT_SCHEME,
     tatdqa_reports: Mapping[str, str] | None = None,
+    extra_runs: Sequence[Path] = (),
 ) -> list[LabelRow]:
     records = {r.question_id: r for r in read_manifest(manifest)}
     latest: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-    for row in read_predictions(run_dir / "predictions.jsonl"):
-        if row["error"] is None:
-            latest[row["question_id"]][row["pipeline"]] = row
+    for run in (run_dir, *extra_runs):
+        for row in read_predictions(run / "predictions.jsonl"):
+            if row["error"] is None and row["pipeline"] in paths:
+                latest[row["question_id"]][row["pipeline"]] = row
     complete = {q: rs for q, rs in latest.items() if all(p in rs for p in paths)}
     missing = sorted(set(complete) - set(records))
     if missing:

@@ -34,7 +34,7 @@ from qdu.evaluation.oracle import (
 )
 from qdu.models.base import LanguageModel
 from qdu.ocr.base import OcrEngine
-from qdu.pipelines import build_pipeline
+from qdu.pipelines import ALL_PIPELINES, build_pipeline
 from qdu.provenance import cpu_info, file_sha256, gpu_info, run_metadata
 from qdu.runner import (
     PredictionRow,
@@ -173,11 +173,25 @@ def run(
     limit: int | None = None,
     loaded: Mapping[str, "Dataset"] | None = None,
     on_row: Callable[[PredictionRow], None] | None = None,
+    layout: Path | None = None,
 ) -> RunStats:
-    """Run the pipelines on the manifest; resumable, appends to ``predictions.jsonl``."""
+    """Run the pipelines on the manifest; resumable, appends to ``predictions.jsonl``.
+
+    ``layout`` is a page-layout file (``qdu layout detect``), needed by the crop path."""
     records = read_manifest(manifest)[:limit]
+    layouts = None
+    if layout is not None:
+        from qdu.layout import load_layout
+
+        layouts = load_layout(layout)
     built = [
-        build_pipeline(p, text_model=text_model, vision_model=vision_model, ocr=ocr)
+        build_pipeline(
+            p,
+            text_model=text_model,
+            vision_model=vision_model,
+            ocr=ocr,
+            layout_of=layouts.get if layouts is not None else None,
+        )
         for p in pipelines
     ]
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -186,6 +200,7 @@ def run(
         vision_model=vision_model.name,
         pipelines=list(pipelines),
         ocr_engine=ocr.name if ocr else None,
+        layout=layout.as_posix() if layout else None,
         cpu=cpu_info(),  # cached OCR times carry their own hardware in each row
         gpu=gpu_info(),
         text_model_config=_describe(text_model),
@@ -308,7 +323,8 @@ def report(run_dir: Path, *, tolerance: float = 0.0, cost: str = "latency") -> R
     out.mkdir(parents=True, exist_ok=True)
     rows = scored_predictions(run_dir / "predictions.jsonl", cost)
     present = {r.pipeline for r in rows}
-    pipelines = tuple(p for p in DEFAULT_COST_ORDER if p in present)
+    order = (*DEFAULT_COST_ORDER, *(p for p in ALL_PIPELINES if p not in DEFAULT_COST_ORDER))
+    pipelines = tuple(p for p in order if p in present)
     by_stratum = summarize(rows, pipelines, tolerance=tolerance)
     by_dataset = summarize(
         [

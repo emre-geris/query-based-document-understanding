@@ -26,7 +26,13 @@ from pathlib import Path
 from qdu.evaluation.bootstrap import Difference, paired_differences
 from qdu.router.labels import PATHS, LabelRow
 
-PATH_USES_OCR = {"text": True, "vision": False, "hybrid": True}
+PATH_USES_OCR = {
+    "text": True,
+    "vision": False,
+    "hybrid": True,
+    "vision-low": False,  # the page at 1/4 of its pixels (Phase 7 A)
+    "crop": True,  # locates the evidence with OCR (Phase 7 B)
+}
 BASELINE = "always-hybrid"
 
 
@@ -59,8 +65,11 @@ class Policy:
         return sum(row.model_s[p] for p in paths) + page + self.question_s.get(qid, 0.0)
 
 
-def baselines(rows: Iterable[LabelRow], paths: Sequence[str] = PATHS) -> list[Policy]:
+def baselines(rows: Iterable[LabelRow], paths: Sequence[str] | None = None) -> list[Policy]:
+    """Always-<path> for every path in the label table (or ``paths``), and the oracle."""
     rows = list(rows)
+    if paths is None:
+        paths = list(rows[0].score) if rows else list(PATHS)
     fixed = [Policy(f"always-{p}", {r.question_id: p for r in rows}) for p in paths]
     return [*fixed, Policy("oracle", {r.question_id: r.oracle_latency for r in rows})]
 

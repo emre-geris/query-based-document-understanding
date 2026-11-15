@@ -43,6 +43,8 @@ class PredictionRow:
     ocr_hardware: str | None = None
     token_logprobs: list[float] | None = None
     """Per output token, only in runs made with ``QDU_LOGPROBS=1`` (absent in older rows)."""
+    image_fraction: float | None = None
+    """Share of the page's pixels sent (vision-low, crop paths; absent in older rows)."""
 
 
 @dataclass
@@ -178,4 +180,5 @@ def _run_one(pipeline: Pipeline, inp: PipelineInput, record: QARecord) -> Predic
         raw_output=out.raw_output,
         ocr_hardware=out.ocr_hardware,
         token_logprobs=list(out.token_logprobs) if out.token_logprobs is not None else None,
+        image_fraction=out.image_fraction,
     )

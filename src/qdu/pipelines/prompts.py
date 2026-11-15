@@ -28,6 +28,12 @@ VISION_PROMPT = """You are answering a question about the attached document page
 Question: {question}
 {instruction}"""
 
+CROP_PROMPT = """You are answering a question about the attached image, a part of a document page
+cut out around the words that match the question.
+
+Question: {question}
+{instruction}"""
+
 HYBRID_PROMPT = """You are answering a question about the attached document page image.
 The OCR text of the same page is given below. It may contain recognition errors or miss
 content; when it disagrees with the image, trust the image.
@@ -52,6 +58,10 @@ def text_prompt(question: str, ocr_text: str) -> str:
 
 def vision_prompt(question: str) -> str:
     return VISION_PROMPT.format(question=question, instruction=ANSWER_INSTRUCTION)
+
+
+def crop_prompt(question: str) -> str:
+    return CROP_PROMPT.format(question=question, instruction=ANSWER_INSTRUCTION)
 
 
 def hybrid_prompt(question: str, ocr_text: str) -> str:

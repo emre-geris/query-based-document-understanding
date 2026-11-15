@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 if TYPE_CHECKING:
     from PIL.Image import Image
 
-PipelineName = Literal["text", "vision", "hybrid"]
+PipelineName = Literal["text", "vision", "hybrid", "vision-low", "crop"]
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,9 @@ class PipelineOutput:
     ocr_chars: int | None = None
     ocr_hardware: str | None = None
     token_logprobs: tuple[float, ...] | None = None
+    image_fraction: float | None = None
+    """Share of the page's pixels sent to the model, when a path sends less than the page
+    (vision-low, crop; 1.0 when the crop falls back to the whole page)."""
 
 
 class Pipeline(Protocol):
