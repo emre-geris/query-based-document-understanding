@@ -201,6 +201,17 @@ def test_web_api_drives_the_session(session):
     v = client.post("/api/example", json={"index": 0}).json()
     assert v["page"]["name"].startswith("DocVQA")
     assert client.get("/api/page.png").headers["content-type"] == "image/png"
+    assert "data-view" in page.text and 'id="viewer"' in page.text  # enlarged page viewer
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    from qdu.demo.web import PAGE_FULL_SIDE, PAGE_PREVIEW_SIDE
+
+    preview = PILImage.open(BytesIO(client.get("/api/page.png").content))
+    full = PILImage.open(BytesIO(client.get("/api/page.png?full=1").content))
+    assert max(preview.size) == PAGE_PREVIEW_SIDE  # the 1000 x 1400 page, shrunk
+    assert full.size == SIZE and max(SIZE) <= PAGE_FULL_SIDE  # the page's own pixels
     v = client.post(
         "/api/ask", json={"question": QUESTIONS[0], "mode": "auto", "compare": True}
     ).json()

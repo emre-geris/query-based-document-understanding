@@ -22,6 +22,9 @@ from qdu.demo.service import PATHS, DemoAnswer
 from qdu.demo.session import DATASET_NAME, MODE_OF, DemoSession
 
 STATIC = Path(__file__).parent / "static"
+PAGE_PREVIEW_SIDE = 900
+PAGE_FULL_SIDE = 4000
+"""Longer side of the enlarged page; DocVQA / TAT-DQA pages (~1,700 x 2,400) stay full size."""
 MODE_NAMES = {v: k for k, v in MODE_OF.items()}
 
 
@@ -250,12 +253,15 @@ def create_app(session: DemoSession, status: str = ""):
         return reply(session.stop_presentation)
 
     @app.get("/api/page.png")
-    def page_image():
+    def page_image(full: int = 0):
+        """The current page: a 900-pixel preview, or with ``full=1`` the page itself (capped at
+        PAGE_FULL_SIDE pixels on the longer side) for the enlarged viewer."""
         with lock:
             if session.page is None:
                 return Response(status_code=404)
             image = session.page.image.copy()
-        image.thumbnail((900, 900))
+        side = PAGE_FULL_SIDE if full else PAGE_PREVIEW_SIDE
+        image.thumbnail((side, side))
         buf = io.BytesIO()
         image.save(buf, format="PNG")
         return Response(

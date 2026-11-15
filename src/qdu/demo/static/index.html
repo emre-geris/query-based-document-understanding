@@ -69,6 +69,24 @@ header p { margin: 0; font-size: 13px; color: var(--muted); }
 .turn { display: flex; flex-direction: column; gap: 14px; }
 .user { display: flex; justify-content: flex-end; gap: 12px; align-items: flex-end; }
 .user img { width: 92px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+.pagebtn { all: unset; cursor: zoom-in; display: block; border-radius: 6px; }
+.pagebtn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.pagebtn:hover img { border-color: var(--ink); }
+.viewbtn { font-size: 12px; font-weight: 500; border-radius: 999px; padding: 6px 12px; cursor: zoom-in;
+  border: 1px solid var(--line); background: var(--white); color: var(--ink); }
+.viewbtn:hover { border-color: var(--ink); }
+#viewer { position: fixed; inset: 0; z-index: 50; background: rgba(20, 20, 18, .88); display: none;
+  flex-direction: column; }
+#viewer.open { display: flex; }
+#viewer .bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; color: #fff; font-size: 13px; }
+#viewer .bar b { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#viewer .bar button { font-size: 13px; border-radius: 999px; padding: 6px 14px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.35); background: transparent; color: #fff; }
+#viewer .bar button.on { background: #fff; color: var(--ink); }
+#viewer .pane { flex: 1; overflow: auto; display: flex; padding: 0 16px 16px; }
+#viewer img { margin: auto; background: #fff; border-radius: 4px; cursor: zoom-in; }
+#viewer.fit img { max-width: 100%; max-height: 100%; object-fit: contain; }
+#viewer:not(.fit) img { max-width: none; max-height: none; cursor: zoom-out; }
 .user p { margin: 0; max-width: 560px; background: var(--ink); color: #fff; padding: 12px 16px;
   border-radius: 16px 16px 4px 16px; font-size: 15px; line-height: 1.5; }
 .bot { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column;
@@ -239,6 +257,13 @@ thead th { background: var(--bg); border-top: none; font-weight: 600; }
       <p class="note" id="modeNote"></p>
     </form>
     <input type="file" id="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+    <div id="viewer" class="fit" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">
+      <div class="bar"><b id="viewerTitle"></b>
+        <button type="button" id="viewerFit">Ekrana sığdır</button>
+        <button type="button" id="viewerFull">Gerçek boyut (%100)</button>
+        <button type="button" id="viewerClose">Kapat (Esc)</button></div>
+      <div class="pane"><img id="viewerImg" alt="Sayfanın tam çözünürlüklü görüntüsü; tıklayınca yakınlaşır"></div>
+    </div>
   </main>
 
   <aside aria-label="Seçilen cevabın analizi" id="aside"></aside>
@@ -293,6 +318,7 @@ function renderHeader() {
   if (p.recorded) pills.push(`<span class="pill orange">Cevaplar: GPU koşusunun kayıtları</span>`);
   const qs = V.questions.length
     ? `<div class="chips-q">${V.questions.map((q, i) => `<button type="button" class="qchip" data-q="${i}">${esc(q)}</button>`).join("")}</div>` : "";
+  pills.push(`<button type="button" class="viewbtn" data-view="1">Sayfayı büyük göster</button>`);
   $("header").innerHTML = `<h1>${esc(p.name)}</h1><p>${esc(p.info)}</p><div class="pills">${pills.join("")}</div>${qs}`;
 }
 
@@ -327,7 +353,7 @@ function emptyHtml() {
 
 function threadHtml() {
   const turns = V.answers.map((a, i) => {
-    const img = i === 0 ? `<img src="/api/page.png?p=${encodeURIComponent(V.page.id)}" alt="Sayfanın küçük önizlemesi">` : "";
+    const img = i === 0 ? `<button type="button" class="pagebtn" data-view="1" title="Sayfayı büyük göster"><img src="/api/page.png?p=${encodeURIComponent(V.page.id)}" alt="Sayfanın küçük önizlemesi; büyütmek için tıklayın"></button>` : "";
     const score = a.score === null ? "" : `<span class="badge ${scoreClass(a.score)}">${esc(a.verdict)} · ${esc(a.metric)} ${num(a.score)}</span>`;
     const rec = a.recorded ? `<span class="why">kayıtlı cevap (GPU koşusu)</span>` : "";
     return `<div class="turn"><div class="user">${img}<p>${esc(a.question)}</p></div>
@@ -434,6 +460,34 @@ function render() {
 }
 
 // events (delegated, since the markup is redrawn)
+// enlarged page viewer: fit to the window, or the page's own pixels (scroll to move around)
+function openViewer() {
+  if (!V.page) return;
+  const v = $("viewer");
+  $("viewerTitle").textContent = V.page.name;
+  const img = $("viewerImg");
+  const src = `/api/page.png?full=1&p=${encodeURIComponent(V.page.id)}`;
+  if (img.getAttribute("src") !== src) img.setAttribute("src", src);
+  setFit(true);
+  v.classList.add("open");
+  $("viewerClose").focus();
+}
+function closeViewer() { $("viewer").classList.remove("open"); }
+function setFit(fit) {
+  $("viewer").classList.toggle("fit", fit);
+  $("viewerFit").classList.toggle("on", fit);
+  $("viewerFull").classList.toggle("on", !fit);
+}
+document.addEventListener("click", (ev) => {
+  if (ev.target.closest("[data-view]")) { openViewer(); return; }
+  if (ev.target.id === "viewerImg") { setFit(!$("viewer").classList.contains("fit")); return; }
+  if (ev.target.id === "viewerFit") { setFit(true); return; }
+  if (ev.target.id === "viewerFull") { setFit(false); return; }
+  if (ev.target.id === "viewerClose" || ev.target.classList.contains("pane")) { closeViewer(); return; }
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && $("viewer").classList.contains("open")) closeViewer();
+});
 document.addEventListener("click", (ev) => {
   const t = ev.target.closest("[data-ex],[data-q],[data-sel],[data-sc],[data-mode],#prev,#next,#presentBtn,#drop,#attach,#uploadSide,#newChat");
   if (!t || busy) return;
