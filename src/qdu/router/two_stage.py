@@ -73,16 +73,27 @@ T3_QUANTILES = (0.5, 0.7, 0.8, 0.85, 0.9, 0.95, 0.97, 0.99)
 
 OFF = 1.01
 
-ROUTER_PATHS = ("text", "vision", "hybrid")
-"""Paths the two-stage router can choose; text and vision are always among them."""
+ROUTER_PATHS = ("text", "vision", "hybrid", "vision-low")
+"""Paths the two-stage router can choose; text and vision are always among them.
+``vision-low`` (the page at 1/4 of its pixels, Phase 7 A) needs a label table that
+includes it (`qdu router labels --extra-run`)."""
+
+DEFAULT_PATHS = ("text", "vision", "hybrid")
+"""The three-way router's paths (the default); add ``vision-low`` explicitly."""
+
+T4_QUANTILES = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
+"""Detail-head thresholds: these quantiles of its val outputs, plus 0 (always full
+resolution) and 1.01 (always vision-low when the image is chosen)."""
 
 TARGETS = {
     "image": ("vision", "text"),
     "hybrid": ("hybrid", "vision"),
+    "detail": ("vision", "vision-low"),
 }
 """A head's training target: 1 when the first path scores strictly higher than the second.
 ``image``: the page image is needed (vision beats text); ``hybrid``: adding the OCR text to the
-image helps (hybrid beats vision)."""
+image helps (hybrid beats vision); ``detail``: the full-resolution page beats the page at 1/4
+of its pixels."""
 
 
 @dataclass
@@ -153,6 +164,10 @@ class TwoStageRouter:
     params: tuple[float, ...] = (OFF, OFF)
     hybrid: NeedsImage | None = None
     """Hybrid head (target ``hybrid``, stage-2 signals); None for the two-way router."""
+    detail: NeedsImage | None = None
+    """Detail head (target ``detail``, stage-1 signals, no OCR); when the router chooses the
+    image, it sends the full-resolution page only if P(vision > vision-low) reaches t4,
+    else the page at 1/4 of its pixels. None when vision-low is not a path."""
     grid: list[GridPoint] = field(default_factory=list)
     budget: float = 0.0
     met_budget: bool = False
@@ -170,6 +185,7 @@ class TwoStageRouter:
         p2: float | None = None,
         p3: float | None = None,
         params: tuple[float, ...] | None = None,
+        p4: float | None = None,
     ) -> tuple[str, int]:
         """The path for one question and the stage that decided it, from its head
         probabilities. ``p2`` (and ``p3``) are needed only when stage 1 does not decide; the
@@ -177,13 +193,20 @@ class TwoStageRouter:
         so evaluation and the demo choose identically."""
         t1, t2, *rest = params or self.params
         t3 = rest[0] if rest else OFF
+        t4 = rest[1] if len(rest) > 1 else 0.0  # 0: always full resolution
+
+        def image() -> str:
+            if self.detail is None or p4 is None or p4 >= t4:
+                return "vision"
+            return "vision-low"
+
         if p1 >= t1:  # stage 1: the image is needed, decided without OCR
-            return "vision", 1
+            return image(), 1
         if p2 is None:
             raise ValueError("stage 1 did not decide: the stage-2 probability is needed")
         if t3 < OFF and p3 is not None and p3 >= t3:  # OCR already paid: only model time
             return "hybrid", 2
-        return ("vision" if p2 >= t2 else "text"), 2
+        return (image() if p2 >= t2 else "text"), 2
 
     def policy(
         self,
@@ -195,6 +218,7 @@ class TwoStageRouter:
         name: str = "two-stage",
         probabilities: tuple[Mapping[str, float], ...] | None = None,
         page_seconds: Mapping[str, Mapping[str, float]] | None = None,
+        detail: Mapping[str, float] | None = None,
     ) -> Policy:
         """Choices and the router's own cost for ``rows``.
 
@@ -205,6 +229,9 @@ class TwoStageRouter:
         (`FeatureTable.page_seconds`) is page-level signal time per extractor, e.g. the CLIP
         page embedding of S6; a stage pays it for the extractors it uses."""
         p1, p2, p3 = probabilities or self.probabilities(rows, features)
+        if detail is None and self.detail is not None:
+            detail = self.detail.predict(rows, features)
+        p4 = detail or {}
         choice, uses_ocr, page_s, question_s = {}, {}, {}, {}
         both = (*self.stage1_extractors, *self.stage2_extractors)
         for r in rows:
@@ -212,7 +239,7 @@ class TwoStageRouter:
             spent = seconds[q]
             on_page = (page_seconds or {}).get(q, {})
             question_s[q] = sum(spent[e] for e in self.stage1_extractors)
-            choice[q], stage = self.choose(p1[q], p2[q], p3.get(q), params)
+            choice[q], stage = self.choose(p1[q], p2[q], p3.get(q), params, p4.get(q))
             if stage == 1:  # decided without OCR
                 uses_ocr[q] = False
                 page_s[q] = (layout_s[q] if self.stage1_needs_layout else 0.0) + sum(
@@ -239,7 +266,7 @@ def train_two_stage(
     stage1: Sequence[str] = ("s1", "s3"),
     stage2: Sequence[str] = ("s1", "s2", "s3", "s4"),
     needs_layout: Mapping[str, bool],
-    paths: Sequence[str] = ROUTER_PATHS,
+    paths: Sequence[str] = DEFAULT_PATHS,
     t1: Sequence[float] = T1,
     t2: Sequence[float] = T2,
     t3: Sequence[float] | None = None,
@@ -254,6 +281,7 @@ def train_two_stage(
     to `T3_QUANTILES` of the hybrid head's val outputs plus 1.01; ``budget`` (seconds, scenario
     C) to always-vision's mean cost on ``val``."""
     paths = tuple(dict.fromkeys(paths))
+    with_low = "vision-low" in paths
     if not {"text", "vision"} <= set(paths) or not set(paths) <= set(ROUTER_PATHS):
         raise ValueError(f"paths must include text and vision, from {ROUTER_PATHS}; got {paths}")
     prefixes2 = tuple(f"{e}_" for e in stage2)
@@ -269,14 +297,29 @@ def train_two_stage(
         if three_way
         else None,
     )
+    if with_low:  # OCR-free, like stage 1: deciding the resolution must not need OCR
+        router.detail = NeedsImage(tuple(f"{e}_" for e in stage1), seed, target="detail").fit(
+            train, features
+        )
     cached = router.probabilities(val, features)
+    p4 = router.detail.predict(val, features) if router.detail is not None else None
     if three_way and t3 is None:
         t3 = sorted({*(float(v) for v in np.quantile(list(cached[2].values()), T3_QUANTILES)), OFF})
-    settings = (
-        [(a, b, c) for a in t1 for b in t2 for c in t3]  # type: ignore[union-attr]
-        if three_way
-        else [(a, b) for a in t1 for b in t2]
-    )
+    if with_low:
+        t4 = sorted(
+            {0.0, *(float(v) for v in np.quantile(list(p4.values()), T4_QUANTILES)), OFF}  # type: ignore[union-attr]
+        )
+        settings = [
+            (a, b, c, d)
+            for a in t1
+            for b in t2
+            for c in (t3 if three_way else (OFF,))  # type: ignore[union-attr]
+            for d in t4
+        ]
+    elif three_way:
+        settings = [(a, b, c) for a in t1 for b in t2 for c in t3]  # type: ignore[union-attr]
+    else:
+        settings = [(a, b) for a in t1 for b in t2]
     router.grid = [
         grid_point(
             val,
@@ -288,6 +331,7 @@ def train_two_stage(
                 ps,
                 probabilities=cached,
                 page_seconds=page_seconds,
+                detail=p4,
             ),
             ps,
         )

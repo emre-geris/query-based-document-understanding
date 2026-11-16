@@ -337,3 +337,51 @@ def test_leaving_out_the_only_dataset_fails():
 def test_cli_lodo_rejects_bad_budget(capsys):
     assert main(["router", "lodo", "--budget", "hybrid:x"]) == 2
     assert "--budget must be" in capsys.readouterr().err
+
+
+def with_vision_low(rows):
+    """vision-low: as good as vision except on chart questions (which need full detail)."""
+    out = []
+    for r in rows:
+        low = 0.0 if "chart" in r.question else r.score["vision"]
+        out.append(
+            replace(
+                r,
+                score={**r.score, "vision-low": low},
+                model_s={**r.model_s, "vision-low": 0.5},
+                cost_c={**r.cost_c, "vision-low": 0.5},
+                cost_b={**r.cost_b, "vision-low": 0.5},
+                tokens={**r.tokens, "vision-low": 800.0},
+            )
+        )
+    return out
+
+
+def test_detail_head_sends_the_low_resolution_page_unless_detail_is_needed():
+    train, val, features, seconds, layout_s = make_data(("chart", "hidden", "plain", "plain"))
+    train, val = with_vision_low(train), with_vision_low(val)
+    router = train_two_stage(
+        train,
+        val,
+        features,
+        seconds,
+        layout_s,
+        stage1=("s1", "s3"),
+        stage2=("s1", "s2", "s3"),
+        needs_layout=NEEDS_LAYOUT,
+        paths=("text", "vision", "vision-low"),
+    )
+    assert router.detail is not None and len(router.params) == 4
+    policy = router.policy(val, features, seconds, layout_s)
+    for r in val:
+        chosen = policy.choice[r.question_id]
+        assert r.score[chosen] == 1.0, r.question_id  # every question answered
+        if "chart" in r.question:  # needs full detail
+            assert chosen == "vision"
+        else:  # the low-resolution page is as good and cheaper than text (which pays OCR)
+            assert chosen == "vision-low"
+    # with t4 = 0 the router never chooses vision-low: the three-path router
+    plain = router.policy(val, features, seconds, layout_s, params=(*router.params[:3], 0.0))
+    assert "vision-low" not in set(plain.choice.values())
+    assert router.choose(0.9, params=(0.5, 0.5, 1.01, 0.5), p4=0.1) == ("vision-low", 1)
+    assert router.choose(0.9, params=(0.5, 0.5, 1.01, 0.5), p4=0.9) == ("vision", 1)

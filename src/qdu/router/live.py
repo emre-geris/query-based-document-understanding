@@ -100,7 +100,8 @@ class LiveDecision:
     p_image_stage2: float | None
     p_hybrid: float | None
     thresholds: tuple[float, ...]
-    """(t1, t2, t3); t3 = 1.01 when the router never chooses hybrid."""
+    """(t1, t2, t3[, t4]); t3 = 1.01 when the router never chooses hybrid; t4 (detail head)
+    only when vision-low is a path."""
     ocr: OcrResult | None
     """The page's OCR if this question needed it (stage 2); the text path uses it too."""
     layout_s: float
@@ -197,10 +198,12 @@ class LiveRouter:
         row = SimpleNamespace(question_id=qid, question=question)
         start = time.perf_counter()
         p1 = r.stage1.predict([row], {qid: features})[qid]
+        detail = getattr(r, "detail", None)  # routers saved before vision-low lack it
+        p4 = detail.predict([row], {qid: features})[qid] if detail is not None else None
         decide_s = time.perf_counter() - start
-        params = tuple(r.params) if len(r.params) == 3 else (*r.params, OFF)
+        params = tuple(r.params) if len(r.params) >= 3 else (*r.params, OFF)
         if p1 >= params[0]:
-            path, _ = r.choose(p1, params=params)
+            path, _ = r.choose(p1, params=params, p4=p4)
             return LiveDecision(
                 path, 1, p1, None, None, params, None, layout_s, 0.0, page_signal_s,
                 signal_s, decide_s, tuple(reused), stage1,
@@ -217,7 +220,7 @@ class LiveRouter:
         p2 = r.stage2.predict([row], {qid: features})[qid]
         p3 = r.hybrid.predict([row], {qid: features})[qid] if r.hybrid is not None else None
         decide_s += time.perf_counter() - start
-        path, _ = r.choose(p1, p2, p3, params)
+        path, _ = r.choose(p1, p2, p3, params, p4)
         return LiveDecision(
             path, 2, p1, p2, p3, params, page.ocr, layout_s, page.ocr.latency_s,
             page_signal_s + more_page_s, signal_s + more_s, decide_s, tuple(reused), stage1,

@@ -188,7 +188,7 @@ def _decision_steps(a: DemoAnswer) -> str:
     d = a.decision
     if d is None:
         return f"<p>Yol elle seçildi ({LABEL[a.path]}); yönlendirici çalıştırılmadı.</p>"
-    t1, t2, t3 = d.thresholds
+    t1, t2, t3, *_ = d.thresholds
     passed = "geçti" if d.p_image_stage1 >= t1 else "geçmedi"
     items = [
         f"<li><b>1. aşama, metin okumadan</b> ({stage1_inputs(d.stage1_signals)}): "

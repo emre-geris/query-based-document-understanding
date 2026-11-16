@@ -34,7 +34,7 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
     share = a.questions_on_page if scenario == "B" else 1
     steps: list[dict[str, Any]] = []
     if d is not None:
-        t1, t2, t3 = d.thresholds
+        t1, t2, t3, *_ = d.thresholds
         steps.append(
             {"title": "1. aşama · metin okumadan karar", "name": "p(görüntü gerekli)",
              "p": d.p_image_stage1, "t": t1, "passed": d.p_image_stage1 >= t1, "scale": 1.0,

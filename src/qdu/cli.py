@@ -695,10 +695,18 @@ def cmd_router_two_stage(args: argparse.Namespace) -> int:
 
     name = args.name
     out = args.out_dir / name
-    labels = ("t1", "t2", "t3") if three_way else ("t1", "t2")
+    labels = (
+        ("t1", "t2", "t3", "t4")
+        if "vision-low" in paths
+        else ("t1", "t2", "t3")
+        if three_way
+        else ("t1", "t2")
+    )
     print(
         f"Router {name}: paths {'/'.join(paths)}; stage 1 {','.join(stage1)} (no OCR), "
-        f"stage 2 {','.join(stage2)}" + (" + hybrid head" if three_way else "")
+        f"stage 2 {','.join(stage2)}"
+        + (" + hybrid head" if three_way else "")
+        + (" + detail head (stage 1)" if "vision-low" in paths else "")
     )
     print(f"Validation grid (C cost budget = {budget_name} {router.budget:.3f} s):")
     head = "".join(f"{k:>6}" for k in labels)
