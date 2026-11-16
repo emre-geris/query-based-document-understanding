@@ -23,6 +23,9 @@ from qdu.evaluation.anls import anls_score
 from qdu.evaluation.primary import primary_metric, primary_score
 from qdu.runner import read_predictions
 
+NO_OCR_PIPELINES = ("vision", "vision-low")
+"""Paths that send only the page image, so their rows carry no OCR cost."""
+
 
 def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
@@ -73,9 +76,9 @@ def audit(run_dir: Path, *, examples: int = 3) -> tuple[list[str], list[str]]:
             row_issues["model latency missing or not positive"].append(where)
         if not r.get("input_tokens") or r.get("output_tokens") is None:
             row_issues["token counts missing"].append(where)
-        if pipeline == "vision":
+        if pipeline in NO_OCR_PIPELINES:
             if r.get("ocr_latency_s") or r.get("ocr_engine"):
-                row_issues["vision row carries OCR cost"].append(where)
+                row_issues[f"{pipeline} row carries OCR cost"].append(where)
         else:
             if r.get("ocr_latency_s") is None:
                 row_issues["OCR time missing"].append(where)

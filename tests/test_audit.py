@@ -6,7 +6,7 @@ from qdu.audit import audit
 
 
 def row(qid: str, pipeline: str, prediction: str, model_s: float, ocr_s: float | None, **extra):
-    ocr = pipeline != "vision"
+    ocr = pipeline not in ("vision", "vision-low")
     return {
         "question_id": qid,
         "doc_id": "docvqa/page",
@@ -78,3 +78,11 @@ def test_inconsistent_costs_and_scores_are_reported(tmp_path: Path) -> None:
 def test_empty_or_missing_run_is_a_problem(tmp_path: Path) -> None:
     _, problems = audit(tmp_path / "does-not-exist")
     assert any("no successful predictions" in p for p in problems)
+
+
+def test_a_vision_low_run_needs_no_ocr(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    write(run_dir, [row("docvqa/1", "vision-low", "42", 0.5, None)])
+    benchmark.report(run_dir)
+    _, problems = audit(run_dir)
+    assert problems == []
