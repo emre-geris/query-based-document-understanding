@@ -1,0 +1,27 @@
+stratum,n,vision-low,oracle,best_single,headroom
+ALL,12305,0.7598,0.7598,vision-low,0.0000
+chartqa/augmented,1250,0.8448,0.8448,vision-low,0.0000
+chartqa/human,1250,0.5592,0.5592,vision-low,0.0000
+docvqa/Image/Photo,98,0.7998,0.7998,vision-low,0.0000
+docvqa/Yes/No,28,0.8929,0.8929,vision-low,0.0000
+docvqa/figure/diagram,259,0.9092,0.9092,vision-low,0.0000
+docvqa/form,784,0.9647,0.9647,vision-low,0.0000
+docvqa/free_text,688,0.9282,0.9282,vision-low,0.0000
+docvqa/handwritten,303,0.8886,0.8886,vision-low,0.0000
+docvqa/layout,1331,0.9345,0.9345,vision-low,0.0000
+docvqa/others,233,0.9189,0.9189,vision-low,0.0000
+docvqa/table/list,1625,0.9277,0.9277,vision-low,0.0000
+infographicvqa/arithmetic,290,0.5419,0.5419,vision-low,0.0000
+infographicvqa/comparison,272,0.5383,0.5383,vision-low,0.0000
+infographicvqa/counting,285,0.4175,0.4175,vision-low,0.0000
+infographicvqa/multi-span,180,0.5229,0.5229,vision-low,0.0000
+infographicvqa/non-extractive,3,0.6333,0.6333,vision-low,0.0000
+infographicvqa/question span,156,0.8048,0.8048,vision-low,0.0000
+infographicvqa/single span,1615,0.7323,0.7323,vision-low,0.0000
+tatdqa/arithmetic,100,0.1250,0.1250,vision-low,0.0000
+tatdqa/count,40,0.4500,0.4500,vision-low,0.0000
+tatdqa/million,208,0.4038,0.4038,vision-low,0.0000
+tatdqa/multi-span,209,0.8130,0.8130,vision-low,0.0000
+tatdqa/percent,290,0.0741,0.0741,vision-low,0.0000
+tatdqa/span,535,0.7457,0.7457,vision-low,0.0000
+tatdqa/thousand,273,0.3443,0.3443,vision-low,0.0000
