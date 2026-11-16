@@ -57,3 +57,21 @@ always-hybrid's score at half its cost, against 29% for the three-path router. T
 from DocVQA (49% of its pages go at low resolution; 93.9 vs hybrid 93.5 at 1.16 vs 2.58 s), while
 infographics and charts stay mostly at full resolution (90%, 89%). On TAT-DQA the tighter budget
 leaves little for hybrid (54.1 vs hybrid 56.5, −2.3 [−5.0, +0.5]).
+
+**Unseen document types: leave one dataset out** (`qdu router lodo --paths
+text,vision,hybrid,vision-low --budget vision:0.8`, `runs/lodo/lodo4_dev.csv`; each held-out
+dataset's train + val questions, never seen in fitting or tuning):
+
+| Held out | Router | vs always-hybrid | vs always-vision | Sent at low resolution |
+|---|---|---|---|---|
+| ChartQA | 82.9 at 0.38 s | +0.7 [−0.3, +1.8] | −0.0 [−0.2, +0.0] | 1% |
+| DocVQA | 93.7 at 1.28 s | −0.3 [−0.8, +0.2] | −0.6 [−1.0, −0.2] | 37% |
+| InfographicVQA | 69.2 at 1.23 s | **−10.4 [−12.3, −8.5]** | −10.2 | 42% |
+| TAT-DQA | 50.4 at 1.31 s | **−6.3 [−7.9, −4.7]** | −4.6 | 70% |
+
+The detail head does not transfer to a kind of page it never saw: never having seen
+infographics or financial reports, it sends many of them at low resolution and loses 6–10
+points, where the three-path router lost at most 1.3 (`docs/router.md`). Trained on all four
+kinds (val above) it keeps hybrid's score. So the resolution decision is learned from known page
+kinds; a deployment that meets new kinds of documents needs labelled examples of them, or a
+conservative t4 (e.g. the always-vision budget, which sends 9% at low resolution on val).
