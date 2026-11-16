@@ -1167,6 +1167,17 @@ def _recorded_model(run: Path) -> str:
     return f"{model} ({gpu})" if gpu else model
 
 
+def _live_model(spec: str) -> str:
+    """The status line for a live model: through a tunnel its times include the network."""
+    import os
+
+    base = os.environ.get("QDU_OPENAI_BASE_URL", "http://localhost:8000/v1")
+    name = spec.removeprefix("openai:").split("/")[-1]
+    if "localhost" in base or "127.0.0.1" in base:
+        return f"{name}, canlı"
+    return f"{name}, canlı (uzak sunucu, ör. Colab L4; süreler ağ gecikmesi dahil)"
+
+
 def cmd_demo_serve(args: argparse.Namespace) -> int:
     from qdu.data import ImageStore
     from qdu.demo import load_examples, load_recorded, showcase
@@ -1186,7 +1197,7 @@ def cmd_demo_serve(args: argparse.Namespace) -> int:
         "replay": f"{_recorded_model(args.run)}, kayıtlı cevaplar; yeni sorular ve yüklenen "
         "sayfalar: yalnızca yönlendirme (model GPU'da çalışır)",
         "fake": "deneme modeli (cevaplar anlamsız)",
-    }.get(args.model, args.model)
+    }.get(args.model, _live_model(args.model))
     status = f"Model: {model} · Yönlendirici: {meta.get('router', args.router)}"
     session = DemoSession(service, pages, lambda e: store.get(e.record).convert("RGB"), recorded)
 
