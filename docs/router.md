@@ -210,9 +210,12 @@ for result in evaluate(val, [policy]):
   served by `qdu.demo.web`, which keeps one `DemoSession` and answers each button with its state
   as JSON (`session_view`). The presentation narrative is generated from each answer
   (`render.step_story`), so it never claims more than the result. Gradio was tried first and
-  dropped: it could not follow the design. To run it: `uv sync --extra demo`, train a router
-  (`uv run qdu router two-stage`, saved to `runs/routers/two-stage`, the demo's default), then
-  `uv run qdu demo serve` and open http://127.0.0.1:7860. Note for presenting ChartQA: its
+  dropped: it could not follow the design. To run it: `uv sync --extra demo --extra paddle`,
+  train a router (`uv run qdu router two-stage`, saved to `runs/routers/two-stage`, the demo's
+  default; for the four-path router add `--labels results/full-vision-low-qwen3.5-4b/labels.csv
+  --paths text,vision,hybrid,vision-low --budget vision:0.8`), then `uv run qdu demo serve --ocr
+  paddle-mobile` and open http://127.0.0.1:7860. Uploaded pages get the router's choice only
+  (no model on a laptop). Note for presenting ChartQA: its
   relaxed accuracy gives numbers 5% tolerance, years included, so a wrong year (2019 for 2020)
   is shown as correct.
 - **Embedding signals S5/S6** (`qdu.router.embed`): precomputed once by `qdu router embed`
