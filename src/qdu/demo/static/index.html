@@ -300,6 +300,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const sec = (x) => `${Number(x).toFixed(2).replace(".", ",")} s`;
 const num = (x, d = 2) => Number(x).toFixed(d).replace(".", ",");
+const pct = (x) => "%" + (Number(x) * 100).toFixed(Number(x) < 0.1 ? 1 : 0).replace(".", ",");
 const tok = (n) => Number(n).toLocaleString("tr-TR");
 const badge = (a) => `<span class="badge b-${a.path}">${esc(a.label)}</span>`;
 const scoreClass = (s) => (s >= 1 ? "ok" : s > 0 ? "part" : "bad");
@@ -389,11 +390,14 @@ function threadHtml() {
 
 function stepsHtml(a) {
   if (a.forced) return `<p class="mutedp">Yol elle seçildi; yönlendirici çalıştırılmadı.</p>`;
-  return a.steps.map((s, i) => {
+  const note = `<p class="mutedp">Her adımda bir model, bu yolun gerekli olma olasılığını tahmin eder. "Eşik", o yolu seçmek için gereken en düşük olasılıktır; doğrulama setinde, maliyet bütçesi içinde en doğru sonucu verecek şekilde seçildi. Eşik düşükse yönlendirici o yolu sık seçer.</p>`;
+  return note + a.steps.map((s, i) => {
     const last = s.p === undefined;
     const meter = last ? "" : `<div class="meter"><div class="fill" style="width:${Math.min(100, s.p / s.scale * 100)}%;background:${s.passed ? "#1A1A19" : "#A8A8A0"}"></div>
         <div class="mark" style="left:${Math.min(100, s.t / s.scale * 100)}%"></div></div>
-      <span class="mono">${esc(s.name)} = ${num(s.p, s.scale < 1 ? 4 : 3)} · eşik ${num(s.t, s.scale < 1 ? 4 : 2)} · ${s.passed ? "geçti" : "geçmedi"}</span>`;
+      <span>${esc(s.what)}: <strong>${pct(s.p)}</strong>.</span>
+      <span>Eşik ${pct(s.t)}: olasılık bunu aşarsa ${esc(s.yes)}; aşmazsa ${esc(s.no)}.</span>
+      <span><strong>Sonuç: ${pct(s.p)} ${s.passed ? "≥" : "<"} ${pct(s.t)} → ${esc(s.passed ? s.yes : s.no)}.</strong></span>`;
     const dot = last ? `style="background:${PATH_COLOR[a.path]};color:#fff"` : "";
     return `<div class="step"><div class="rail"><span class="num" ${dot}>${i + 1}</span><span class="line" aria-hidden="true"></span></div>
       <div class="body"><b>${esc(s.title)}</b><span>${esc(s.text)}</span>${meter}</div></div>`;

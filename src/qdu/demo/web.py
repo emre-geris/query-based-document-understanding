@@ -39,7 +39,11 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
             {"title": "1. aşama · metin okumadan karar", "name": "p(görüntü gerekli)",
              "p": d.p_image_stage1, "t": t1, "passed": d.p_image_stage1 >= t1, "scale": 1.0,
              "text": f"Bakılan: {render.stage1_inputs(d.stage1_signals)}; "
-                     "sayfanın metni okunmadı."}
+                     "sayfanın metni okunmadı.",
+             "what": "Sayfa resmine bakmanın gerekli olma olasılığı (görüntü yolu metin "
+                     "yolundan daha iyi cevap verir mi?)",
+             "yes": "görüntü yolu seçilir; sayfanın metni hiç okunmaz",
+             "no": "karar 2. aşamaya kalır: sayfanın metni okunur (OCR) ve tekrar bakılır"}
         )  # fmt: skip
         if d.stage == 2:
             if d.p_hybrid is not None and t3 < 1.01:
@@ -47,13 +51,21 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
                     {"title": "2. aşama · hibrit kararı", "name": "p(hibrit > görüntü)",
                      "p": d.p_hybrid, "t": t3, "passed": d.p_hybrid >= t3,
                      "scale": max(0.02, 2 * t3, d.p_hybrid * 1.2),
-                     "text": "Sayfanın metni okundu; hibritin görüntüden iyi olma olasılığı."}
+                     "text": "Sayfanın metni okundu.",
+                     "what": "Okunan metni sayfa resmiyle birlikte vermenin, yalnız "
+                             "resimden daha iyi cevap verme olasılığı",
+                     "yes": "hibrit yolu seçilir (metin + görüntü)",
+                     "no": "hibrit seçilmez; metin ile görüntü arasında karar verilir"}
                 )  # fmt: skip
             if a.path != "hybrid" and d.p_image_stage2 is not None:
                 steps.append(
                     {"title": "2. aşama · görüntü kararı", "name": "p(görüntü gerekli)",
                      "p": d.p_image_stage2, "t": t2, "passed": d.p_image_stage2 >= t2,
-                     "scale": 1.0, "text": "Okunan metinle birlikte görüntü gerekiyor mu?"}
+                     "scale": 1.0, "text": "Okunan metinle birlikte tekrar bakıldı.",
+                     "what": "Sayfa resmine bakmanın gerekli olma olasılığı "
+                             "(okunan metin yetmez mi?)",
+                     "yes": "görüntü yolu seçilir",
+                     "no": "metin yolu seçilir (okunan metin + soru, en ucuz yol)"}
                 )  # fmt: skip
         if d.p_detail is not None and a.path in ("vision", "vision-low"):
             t4 = d.thresholds[3]
@@ -61,8 +73,11 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
                 {"title": "Çözünürlük kararı", "name": "p(tam çözünürlük gerekli)",
                  "p": d.p_detail, "t": t4, "passed": d.p_detail >= t4,
                  "scale": max(0.02, 2 * t4, d.p_detail * 1.2),
-                 "text": "Küçük yazı ya da ince ayrıntı gerekiyor mu? Gerekmiyorsa sayfa "
-                         "1/4 pikselle, üçte bir maliyetle gönderilir."}
+                 "text": "Görüntü gönderilecek; ne kadar net gönderileceğine karar verilir.",
+                 "what": "Tam çözünürlüğün, 1/4 piksele küçültülmüş sayfadan daha iyi "
+                         "cevap verme olasılığı (küçük yazı, ince ayrıntı)",
+                 "yes": "sayfa tam çözünürlükte gönderilir",
+                 "no": "sayfa 1/4 pikselle, yaklaşık üçte bir maliyetle gönderilir"}
             )  # fmt: skip
         ending = (
             "Sayfanın metni hiç okunmadı; maliyeti ödenmedi."
