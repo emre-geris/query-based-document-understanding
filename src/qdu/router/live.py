@@ -119,6 +119,8 @@ class LiveDecision:
     ``ocr``. Their times above are still the page's measured times (scenario C)."""
     stage1_signals: tuple[str, ...] = ()
     """The extractors stage 1 decided from (e.g. ``("s1", "s3")``), to explain the decision."""
+    p_detail: float | None = None
+    """P(the full-resolution page beats vision-low), from the detail head; None without it."""
 
     @property
     def router_s(self) -> float:
@@ -206,7 +208,7 @@ class LiveRouter:
             path, _ = r.choose(p1, params=params, p4=p4)
             return LiveDecision(
                 path, 1, p1, None, None, params, None, layout_s, 0.0, page_signal_s,
-                signal_s, decide_s, tuple(reused), stage1,
+                signal_s, decide_s, tuple(reused), stage1, p4,
             )  # fmt: skip
 
         if page.ocr is None:
@@ -224,6 +226,7 @@ class LiveRouter:
         return LiveDecision(
             path, 2, p1, p2, p3, params, page.ocr, layout_s, page.ocr.latency_s,
             page_signal_s + more_page_s, signal_s + more_s, decide_s, tuple(reused), stage1,
+            p4,
         )  # fmt: skip
 
     def forget(self, page_id: str) -> None:

@@ -47,8 +47,13 @@ build-backend = "uv_build"
 
 [tool.uv]
 required-version = ">=0.13"
-# onnxruntime and onnxruntime-gpu install the same module
-conflicts = [[{ extra = "rapid" }, { extra = "rapid-gpu" }]]
+# onnxruntime and onnxruntime-gpu install the same module; rapidocr's opencv-python-headless and
+# paddlex's opencv-contrib-python both install cv2 (different versions), which breaks it
+conflicts = [
+    [{ extra = "rapid" }, { extra = "rapid-gpu" }],
+    [{ extra = "rapid" }, { extra = "paddle" }],
+    [{ extra = "rapid-gpu" }, { extra = "paddle" }],
+]
 
 [tool.uv.build-backend]
 module-name = "qdu"

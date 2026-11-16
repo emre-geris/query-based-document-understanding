@@ -1090,7 +1090,10 @@ def build_demo_service(args: argparse.Namespace):
         )
     )
     layout = StoredLayout(load_layout(stored[1]) if stored[1].exists() else {}, live_layout)
-    model = demo_fake_model() if args.model in ("fake", "replay") else create_model(args.model)
+    if args.model == "replay":  # recorded answers for examples, the router alone otherwise
+        model = None
+    else:
+        model = demo_fake_model() if args.model == "fake" else create_model(args.model)
     return DemoService(LiveRouter(router, extractors, ocr, layout), model, ocr), meta
 
 
@@ -1128,7 +1131,11 @@ def cmd_demo_ask(args: argparse.Namespace) -> int:
         if unknown:
             print(f"not val questions of the label table: {unknown}", file=sys.stderr)
             return 2
-        recorded = load_recorded(args.example, args.run) if args.model == "replay" else {}
+        recorded = (
+            load_recorded(args.example, args.run, _extra_runs(args))
+            if args.model == "replay"
+            else {}
+        )
         store = ImageStore()
         for qid in args.example:
             e = examples[qid]
@@ -1173,10 +1180,11 @@ def cmd_demo_serve(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     ids = [e.question_id for page in pages for e in page]
-    recorded = load_recorded(ids, args.run) if args.model == "replay" else {}
+    recorded = load_recorded(ids, args.run, _extra_runs(args)) if args.model == "replay" else {}
     store = ImageStore()
     model = {
-        "replay": f"{_recorded_model(args.run)}, kayıtlı cevaplar (yeni sorular: deneme modeli)",
+        "replay": f"{_recorded_model(args.run)}, kayıtlı cevaplar; yeni sorular ve yüklenen "
+        "sayfalar: yalnızca yönlendirme (model GPU'da çalışır)",
         "fake": "deneme modeli (cevaplar anlamsız)",
     }.get(args.model, args.model)
     status = f"Model: {model} · Yönlendirici: {meta.get('router', args.router)}"
@@ -1229,6 +1237,14 @@ def _add_ocr_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--psm", type=int, default=3, help="Tesseract page segmentation mode")
 
 
+def _extra_runs(args: argparse.Namespace) -> list[Path]:
+    """Runs whose recorded answers add paths (default: the vision-low run, if present)."""
+    if args.extra_run:
+        return list(args.extra_run)
+    default = Path("results/full-vision-low-qwen3.5-4b")
+    return [default] if (default / "predictions.jsonl").exists() else []
+
+
 def _add_demo_options(parser: argparse.ArgumentParser) -> None:
     from qdu.demo.service import MODES
     from qdu.ocr import OCR_SPECS
@@ -1242,10 +1258,18 @@ def _add_demo_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--model",
         default="replay",
-        help="replay (example pages: the labelled run's answers; others: fake), fake, or "
+        help="replay (example pages: the labelled run's answers; other questions: the router's "
+        "choice only, no answer), fake, or "
         "openai:<model> for the vLLM server",
     )
     parser.add_argument("--run", type=Path, default=Path("results/full-qwen3.5-4b"))
+    parser.add_argument(
+        "--extra-run",
+        type=Path,
+        action="append",
+        default=[],
+        help="another run whose recorded answers add a path (default: the vision-low run)",
+    )
     parser.add_argument("--manifest", type=Path, default=Path("benchmarks/full.csv"))
     parser.add_argument(
         "--ocr", choices=OCR_SPECS, default="rapid-mobile", help="OCR engine (CPU by default)"

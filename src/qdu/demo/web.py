@@ -55,12 +55,22 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
                      "p": d.p_image_stage2, "t": t2, "passed": d.p_image_stage2 >= t2,
                      "scale": 1.0, "text": "Okunan metinle birlikte görüntü gerekiyor mu?"}
                 )  # fmt: skip
+        if d.p_detail is not None and a.path in ("vision", "vision-low"):
+            t4 = d.thresholds[3]
+            steps.append(
+                {"title": "Çözünürlük kararı", "name": "p(tam çözünürlük gerekli)",
+                 "p": d.p_detail, "t": t4, "passed": d.p_detail >= t4,
+                 "scale": max(0.02, 2 * t4, d.p_detail * 1.2),
+                 "text": "Küçük yazı ya da ince ayrıntı gerekiyor mu? Gerekmiyorsa sayfa "
+                         "1/4 pikselle, üçte bir maliyetle gönderilir."}
+            )  # fmt: skip
         ending = (
             "Sayfanın metni hiç okunmadı; maliyeti ödenmedi."
             if d.stage == 1
             else {
                 "text": "En ucuz yol: okunan metin + soru; görüntü modele gönderilmedi.",
                 "vision": "Sayfa görüntüsü + soru.",
+                "vision-low": "Sayfa görüntüsü 1/4 pikselle + soru.",
                 "hybrid": "Görüntü + okunan metin birlikte; metin zaten okunduğu için ek "
                 "maliyet sadece modelin süresi.",
             }[a.path]
@@ -77,6 +87,7 @@ def answer_view(a: DemoAnswer, scenario: str = "C") -> dict[str, Any]:
         "stage": d.stage if d else None,
         "forced": d is None,
         "recorded": a.run.recorded,
+        "answered": a.run.answered,
         "reused": list(d.reused) if d else [],
         "total": a.total_b_s if scenario == "B" else a.total_c_s,
         "total_c": a.total_c_s,

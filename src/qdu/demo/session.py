@@ -18,7 +18,13 @@ from qdu.pipelines import PipelineOutput
 if TYPE_CHECKING:
     from PIL.Image import Image
 
-MODE_OF = {"Otomatik": "auto", "Metin": "text", "Görüntü": "vision", "Hibrit": "hybrid"}
+MODE_OF = {
+    "Otomatik": "auto",
+    "Metin": "text",
+    "Görüntü": "vision",
+    "Hibrit": "hybrid",
+    "Düşük çözünürlük": "vision-low",
+}
 DATASET_NAME = {
     "docvqa": "DocVQA",
     "infographicvqa": "InfographicVQA",

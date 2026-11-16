@@ -11,7 +11,7 @@
   --ink: #1A1A19; --ink2: #3A3A36; --muted: #55554F; --line: #DADAD3; --line2: #E3E3DC;
   --bg: #F6F6F3; --side: #EDEDE8; --chip: #F0F0EB; --white: #FFFFFF;
   --text: #0F766E; --text-bg: #E3F3F0; --vision: #1D4ED8; --vision-bg: #E8EEFC;
-  --hybrid: #9A4A07; --hybrid-bg: #FCEEDF;
+  --hybrid: #9A4A07; --hybrid-bg: #FCEEDF; --vision-low: #6D28D9; --vision-low-bg: #F1EAFD;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 * { box-sizing: border-box; }
@@ -109,6 +109,8 @@ header p { margin: 0; font-size: 13px; color: var(--muted); }
 .b-text { color: var(--text); background: var(--text-bg); }
 .b-vision { color: var(--vision); background: var(--vision-bg); }
 .b-hybrid { color: var(--hybrid); background: var(--hybrid-bg); }
+.b-vision-low { color: var(--vision-low); background: var(--vision-low-bg); }
+.pending { font-size: 14px; color: var(--ink2); font-weight: 400; }
 .chip { font-size: 13px; color: var(--ink2); background: var(--chip); border-radius: 999px;
   padding: 4px 10px; font-family: var(--mono); }
 .ok { color: #0F5F58; background: var(--text-bg); }
@@ -261,7 +263,7 @@ thead th { background: var(--bg); border-top: none; font-weight: 600; }
               <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-8.5 8.5a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg>
             </button>
             <div class="seg" role="radiogroup" aria-label="Cevap yolu" id="modes"></div>
-            <label class="check"><input type="checkbox" id="compare" checked> 3 yolu karşılaştır</label>
+            <label class="check"><input type="checkbox" id="compare" checked> Yolları karşılaştır</label>
           </div>
           <button type="submit" class="icon-btn send" id="send" aria-label="Gönder">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -285,9 +287,9 @@ thead th { background: var(--bg); border-top: none; font-weight: 600; }
 
 <script>
 "use strict";
-const MODES = [["auto", "Otomatik"], ["text", "Metin"], ["vision", "Görüntü"], ["hybrid", "Hibrit"]];
+const MODES = [["auto", "Otomatik"], ["text", "Metin"], ["vision", "Görüntü"], ["vision-low", "Düşük çöz."], ["hybrid", "Hibrit"]];
 const TIMING_COLOR = { ocr: "#0F766E", layout: "#7BA9A2", page: "#B9B9B0", router: "#8A8A82", model: "#1D4ED8" };
-const PATH_COLOR = { text: "#0F766E", vision: "#1D4ED8", hybrid: "#9A4A07" };
+const PATH_COLOR = { text: "#0F766E", vision: "#1D4ED8", hybrid: "#9A4A07", "vision-low": "#6D28D9" };
 let V = null;            // the server's view of the session
 let mode = "auto";
 let busy = false;
@@ -375,8 +377,8 @@ function threadHtml() {
     const on = i === V.selected;
     return `<div class="turn"><div class="user"><p>${esc(a.question)}</p></div>
       <button type="button" class="bot${on ? " on" : ""}" data-sel="${i}" aria-pressed="${on}">
-        <span class="ans">${esc(a.answer) || "(boş cevap)"}</span>
-        <span class="row">${badge(a)}${score}<span class="chip">${sec(a.total_c)}</span></span>
+        <span class="ans">${a.answered ? (esc(a.answer) || "(boş cevap)") : `Önerilen yol: ${esc(a.label)} <span class="pending">— cevap için model (Qwen3.5) GPU'da çalışır; burada yalnızca yönlendirici çalıştı</span>`}</span>
+        <span class="row">${badge(a)}${score}<span class="chip">${a.answered ? sec(a.total_c) : `karar ${sec(a.total_c)}`}</span></span>
       </button>${on ? analysisHtml(a) : ""}</div>`;
   }).join("");
   const thinking = busy ? `<div class="thinking">Cevap hazırlanıyor…</div>` : "";
@@ -432,7 +434,7 @@ function analysisHtml(a) {
   const metric = a.score === null ? "" : `<span>${esc(a.metric)}: <strong>${num(a.score)}</strong></span>`;
   const stage = a.forced ? "elle seçildi" : `${a.stage}. aşamada karar`;
   return `<section class="analysis" aria-label="Cevabın ayrıntıları">${verdict}
-    <div class="small">${gold}${metric}<span>Token: <strong>${tok(a.tokens_in + a.tokens_out)}</strong></span></div>
+    <div class="small">${gold}${metric}${a.answered ? `<span>Token: <strong>${tok(a.tokens_in + a.tokens_out)}</strong></span>` : `<span>Süre: OCR + sayfa düzeni + karar (cevap yok)</span>`}</div>
     ${a.compare.length ? `<div class="dbody">${compareHtml(a)}</div>` : ""}
     ${details("steps", "Karar adımları", stage, stepsHtml(a))}
     ${details("timing", "Süre dökümü", "", timingHtml(a))}

@@ -14,9 +14,14 @@ from html import escape
 
 from qdu.demo.service import PATHS, DemoAnswer
 
-LABEL = {"text": "Metin", "vision": "Görüntü", "hybrid": "Hibrit"}
-COLOR = {"text": "#0F766E", "vision": "#1D4ED8", "hybrid": "#9A4A07"}
-TINT = {"text": "#E3F3F0", "vision": "#E8EEFC", "hybrid": "#FCEEDF"}
+LABEL = {
+    "text": "Metin",
+    "vision": "Görüntü",
+    "hybrid": "Hibrit",
+    "vision-low": "Düşük çözünürlük",
+}
+COLOR = {"text": "#0F766E", "vision": "#1D4ED8", "hybrid": "#9A4A07", "vision-low": "#6D28D9"}
+TINT = {"text": "#E3F3F0", "vision": "#E8EEFC", "hybrid": "#FCEEDF", "vision-low": "#F1EAFD"}
 METRIC = {"anls": "ANLS", "relaxed_accuracy": "relaxed accuracy", "f1": "F1"}
 
 CSS = """
@@ -260,7 +265,7 @@ def _compare(a: DemoAnswer) -> str:
             "soru üç yolla da cevaplanır.</p>"
         )
     rows = []
-    for p in PATHS:
+    for p in (p for p in PATHS if p in a.compare):
         r = a.compare[p]
         mark = " (seçilen)" if p == a.path else ""
         sc = num(r.score) if r.score is not None else "—"
@@ -348,9 +353,9 @@ def step_story(a: DemoAnswer, n: int, of: int) -> tuple[str, str]:
     text = f"Yönlendirici {where} {LABEL[a.path].lower()} yolunu seçti ({s(a.total_c_s)})."
     best = cheapest_correct(a)
     if a.score is not None and a.compare:
-        right = [p for p in PATHS if (a.compare[p].score or 0) >= 1]
+        right = [p for p in PATHS if p in a.compare and (a.compare[p].score or 0) >= 1]
         if best == a.path:
-            others = [p for p in PATHS if p != a.path]
+            others = [p for p in PATHS if p in a.compare and p != a.path]
             costs = ", ".join(f"{LABEL[p].lower()} {s(a.compare[p].cost_c_s)}" for p in others)
             text += f" Bu doğru ve en ucuz yoldu; diğerleri: {costs}."
         elif (a.score or 0) >= 1:

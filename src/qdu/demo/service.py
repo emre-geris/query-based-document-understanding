@@ -30,8 +30,8 @@ from qdu.router.live import LiveDecision, LiveRouter
 if TYPE_CHECKING:
     from PIL.Image import Image
 
-PATHS = ("text", "vision", "hybrid")
-USES_OCR = {"text": True, "vision": False, "hybrid": True}
+PATHS = ("text", "vision", "hybrid", "vision-low")
+USES_OCR = {"text": True, "vision": False, "hybrid": True, "vision-low": False}
 MODES = ("auto", *PATHS)
 """``auto``: the router chooses; a path name forces that path (the router is not run)."""
 
@@ -69,6 +69,8 @@ class PathRun:
     tokens_out: int
     recorded: bool = False
     """True when the answer comes from the labelled run, not a live model call."""
+    answered: bool = True
+    """False in router-only mode: no model was available, so only the path was chosen."""
     score: float | None = None
     """Primary-metric score against the gold answers, when they are known."""
 
@@ -132,6 +134,12 @@ class DemoAnswer:
         return self.run.tokens_in, self.run.tokens_out
 
 
+def _unanswered(path: str) -> PathRun:
+    """No model in this demo (it runs on a GPU): the path was chosen, not run."""
+    out = PipelineOutput(path, "", "", "none", 0, 0, 0.0)  # type: ignore[arg-type]
+    return PathRun(path, out, 0.0, 0.0, 0, 0, answered=False)
+
+
 def _run(
     pipeline,
     path: str,
@@ -155,17 +163,23 @@ def _run(
 
 
 class DemoService:
-    """Router + the three paths on one model, with OCR shared between them."""
+    """Router + the paths on one model, with OCR shared between them. ``model=None`` is
+    router-only: questions without a recorded answer get the router's choice and its own
+    cost, no answer (the model needs a GPU)."""
 
-    def __init__(self, router: LiveRouter, model: LanguageModel, ocr: SharedOcr) -> None:
+    def __init__(self, router: LiveRouter, model: LanguageModel | None, ocr: SharedOcr) -> None:
         if router.ocr_engine is not ocr:
             raise ValueError("give the router the same SharedOcr, so a page is read only once")
         self.router = router
         self.ocr = ocr
-        self.pipelines = {
-            p: build_pipeline(p, text_model=model, vision_model=model, ocr=ocr) for p in PATHS
-        }
+        self.pipelines = (
+            {p: build_pipeline(p, text_model=model, vision_model=model, ocr=ocr) for p in PATHS}
+            if model is not None
+            else {}
+        )
         self._asked: dict[str, int] = {}
+        # vision-low only with a router that can choose it (one with the detail head)
+        self.paths = PATHS if getattr(router.router, "detail", None) is not None else PATHS[:3]
 
     def ask(
         self,
@@ -188,11 +202,18 @@ class DemoService:
         path = decision.path if decision else mode
         metric = primary_metric(dataset or "") if answers else None
         score = (lambda a: primary_score(dataset or "", a, answers)) if answers else None
-        to_run = PATHS if compare else (path,)
+        recorded = recorded or {}
+        if not self.pipelines:  # router-only: compare only what was recorded
+            to_run = tuple(p for p in self.paths if p in recorded) if compare else (path,)
+            to_run = to_run if path in to_run else (*to_run, path)
+        else:
+            to_run = self.paths if compare else (path,)
         if recorded and any(USES_OCR[p] for p in to_run):
             self.ocr.extract(image, page_id)  # recorded paths skip the pipeline, not the page
         runs = {
-            p: _run(self.pipelines[p], p, question, image, page_id, (recorded or {}).get(p), score)
+            p: _run(self.pipelines.get(p), p, question, image, page_id, recorded.get(p), score)
+            if p in self.pipelines or p in recorded
+            else _unanswered(p)
             for p in to_run
         }
         needs_ocr = USES_OCR[path] or (decision is not None and decision.stage == 2)
@@ -204,7 +225,7 @@ class DemoService:
             path=path,
             run=runs[path],
             decision=decision,
-            compare=runs if compare else {},
+            compare={p: r for p, r in runs.items() if r.answered} if compare else {},
             questions_on_page=n,
             ocr_s=page_ocr.latency_s if needs_ocr and page_ocr else 0.0,
             layout_s=decision.layout_s if decision else 0.0,
@@ -246,7 +267,7 @@ def describe(answer: DemoAnswer) -> str:
     if d is None:
         lines.append(f"Path: {answer.path} (forced; router not run)")
     else:
-        t1, t2, t3 = d.thresholds
+        t1, t2, t3, *_ = d.thresholds
         lines.append(f"Path: {answer.path} (router, decided in stage {d.stage})")
         lines.append(f"  stage 1: p(image needed) = {d.p_image_stage1:.3f}, threshold t1 = {t1}")
         if d.stage == 2:

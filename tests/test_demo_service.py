@@ -104,3 +104,20 @@ def test_cli_demo_ask_reports_a_missing_router(tmp_path, capsys):
         ["demo", "ask", "--image", str(image), "--question", "q", "--router", str(tmp_path / "x")]
     )
     assert code == 2 and "error" in capsys.readouterr().err
+
+
+def test_router_only_without_a_model(trained):  # noqa: F811
+    from qdu.pipelines import PipelineOutput
+
+    router, _, ocr, layout, _, _ = trained
+    shared = SharedOcr(FakeOcr(ocr))
+    extractors = {k: EXTRACTORS[k]() for k in ("s1", "s2", "s3")}
+    s = DemoService(LiveRouter(router, extractors, shared, FakeLayout(layout)), None, shared)
+    r = first(trained, "chart")
+    a = s.ask(r.question, IMAGE, r.doc_id, compare=True)  # an uploaded page: nothing recorded
+    assert a.path == "vision" and not a.run.answered and a.run.answer == ""
+    assert a.model_s == 0.0 and a.compare == {}  # only the router's own cost
+    recorded = {"vision": PipelineOutput("vision", "42", "42", "Qwen", 900, 2, 1.4)}
+    b = s.ask(r.question, IMAGE, r.doc_id, compare=True, recorded=recorded)
+    assert b.run.answered and b.run.recorded and b.run.answer == "42"
+    assert set(b.compare) == {"vision"}  # only what was recorded can be compared

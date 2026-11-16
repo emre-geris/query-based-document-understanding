@@ -106,12 +106,19 @@ def showcase(examples: Iterable[Example], per_dataset: int = 1) -> list[list[Exa
 
 
 def load_recorded(
-    question_ids: Iterable[str], run: Path = DEFAULT_RUN
+    question_ids: Iterable[str], run: Path = DEFAULT_RUN, extra_runs: Iterable[Path] = ()
 ) -> dict[str, dict[str, PipelineOutput]]:
     """The labelled run's answer of each path for ``question_ids`` (the last successful row
-    per question and path, as the label table uses)."""
+    per question and path, as the label table uses); ``extra_runs`` add their paths (e.g.
+    the vision-low run)."""
     wanted = set(question_ids)
     out: dict[str, dict[str, PipelineOutput]] = defaultdict(dict)
+    for path in (run, *extra_runs):
+        _read_recorded(path, wanted, out)
+    return dict(out)
+
+
+def _read_recorded(run: Path, wanted: set[str], out: dict[str, dict[str, PipelineOutput]]) -> None:
     with (run / "predictions.jsonl").open(encoding="utf-8") as f:
         for line in f:
             if not line.strip():
@@ -132,7 +139,6 @@ def load_recorded(
                 ocr_chars=d.get("ocr_chars"),
                 ocr_hardware=d.get("ocr_hardware"),
             )
-    return dict(out)
 
 
 class StoredOcr:
